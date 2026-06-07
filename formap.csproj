@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Wyklucz pliki sub-projektu RailwayManager.GraphData z auto-globbing-u formap.exe.
+       Library kompiluje się samodzielnie przez własne .csproj i jest linkowany via ProjectReference.
+       Bez tego SDK include'uje source files dwa razy → CS0579 duplicate AssemblyAttribute + CS0436 type conflict. -->
+  <ItemGroup>
+    <Compile Remove="RailwayManager.GraphData\**\*.cs" />
+    <None Remove="RailwayManager.GraphData\**\*.cs" />
+    <EmbeddedResource Remove="RailwayManager.GraphData\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibTessDotNet" Version="1.1.15" />
+    <PackageReference Include="OsmSharp" Version="6.0.0" />
+    <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared library — single source of truth dla pathfinding/loaders logic.
+         Unity referuje skompilowaną DLL (kopiowana przez CopyToUnity target). -->
+    <ProjectReference Include="RailwayManager.GraphData\RailwayManager.GraphData.csproj" />
+  </ItemGroup>
+
+</Project>

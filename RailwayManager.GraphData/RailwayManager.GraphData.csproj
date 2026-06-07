@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- .NET Standard 2.1 — compatible z Unity 6 Mono (.NET Standard 2.1) oraz formap .NET 8 -->
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>RailwayManager.GraphData</RootNamespace>
+    <AssemblyName>RailwayManager.GraphData</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Auto-copy the built DLL to a consumer's Unity Plugins folder after each build.
+       The destination is read from $(UnityPluginsDir), set LOCALLY in a gitignored
+       RailwayManager.GraphData.csproj.user file — so no machine/consumer path is committed. -->
+  <Target Name="CopyToUnity" AfterTargets="Build" Condition="'$(UnityPluginsDir)' != '' And Exists('$(UnityPluginsDir)')">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(UnityPluginsDir)" />
+  </Target>
+
+</Project>
