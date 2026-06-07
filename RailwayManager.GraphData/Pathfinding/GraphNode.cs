@@ -4,7 +4,7 @@ namespace RailwayManager.GraphData
 {
     /// <summary>
     /// Pathfinding graph node — railway junction or chain endpoint.
-    /// Port z Unity Timetable.PathfindingGraph.Node, używa GraphPoint zamiast Vector2.
+    /// Ported from Unity's Timetable.PathfindingGraph.Node, using GraphPoint instead of Vector2.
     /// </summary>
     public struct GraphNode
     {

@@ -3,11 +3,11 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Top-level container z całym pre-built initialization state dla jednego kraju.
-    /// Serializowany do init-state-{countryCode}.bin w formap, deserializowany w Unity.
+    /// Top-level container with the entire pre-built initialization state for a single country.
+    /// Serialized to init-state-{countryCode}.bin in formap, deserialized in Unity.
     ///
-    /// **DLC:** każdy kraj ma osobny InitState. Multi-country runtime: load N plików,
-    /// merge przez border crossings (CrossCountryLinks, MVP=0 list).
+    /// **DLC:** each country has its own InitState. Multi-country runtime: load N files,
+    /// merge via border crossings (CrossCountryLinks, MVP=0 list).
     /// </summary>
     public class InitState
     {
@@ -21,11 +21,11 @@ namespace RailwayManager.GraphData
         public GraphBlockSectionBuilder.BuildResult BlockSections;
 
         /// <summary>
-        /// OSM natural=coastline ways. Każdy element to lista vertices (line). Używane przez
-        /// Unity SyntheticWaterRenderer do generowania mesh'ów Bałtyku i Zalewu Wiślanego
-        /// (PBF Polski nie zawiera natural=water dla tych zbiorników — multipolygons zbyt duże).
+        /// OSM natural=coastline ways. Each element is a list of vertices (a line). Used by
+        /// Unity's SyntheticWaterRenderer to generate meshes for the Baltic and the Vistula Lagoon
+        /// (the Poland PBF does not contain natural=water for these bodies — the multipolygons are too large).
         /// </summary>
         public List<List<GraphPoint>> Coastlines = new List<List<GraphPoint>>();
-        // CrossCountryLinks — Day 5 lub post-DLC. MVP empty.
+        // CrossCountryLinks — reserved for a future (DLC) extension. Empty in the MVP.
     }
 }

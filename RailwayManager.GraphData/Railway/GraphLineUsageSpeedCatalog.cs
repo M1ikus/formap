@@ -1,9 +1,9 @@
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Fallback Vmax dla linii kolejowej gdy tag maxspeed jest nieobecny lub nieprawidłowy.
-    /// Decyzja na podstawie OSM tagów usage/service. Port z Unity LineUsageSpeedCatalog
-    /// do shared library — używana w pre-build edges.
+    /// Fallback Vmax for a railway line when the maxspeed tag is missing or invalid.
+    /// Decided from the OSM usage/service tags. Ported from Unity's LineUsageSpeedCatalog
+    /// to the shared library — used when pre-building edges.
     /// </summary>
     public static class GraphLineUsageSpeedCatalog
     {

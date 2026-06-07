@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Wylicza Vmax dla railway segment z OSM metadata. Stateless utility.
-    /// Port z Unity SegmentSpeedResolver do shared library.
+    /// Computes Vmax for a railway segment from OSM metadata. Stateless utility.
+    /// Ported from Unity's SegmentSpeedResolver to the shared library.
     /// </summary>
     public static class GraphSegmentSpeedResolver
     {

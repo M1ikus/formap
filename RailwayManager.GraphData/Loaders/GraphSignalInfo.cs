@@ -3,10 +3,10 @@ namespace RailwayManager.GraphData
     public enum GraphSignalFunction
     {
         Unknown,
-        Entry,        // semafor wjazdowy do stacji
-        Exit,         // semafor wyjazdowy ze stacji
-        Block,        // semafor szlakowy / blokowy
-        Intermediate  // semafor pośredni / inny główny
+        Entry,        // station entry signal
+        Exit,         // station exit signal
+        Block,        // line / block signal
+        Intermediate  // intermediate / other main signal
     }
 
     public enum GraphSignalDirection
@@ -17,13 +17,13 @@ namespace RailwayManager.GraphData
     }
 
     /// <summary>
-    /// Semafor z OSM (railway=signal). Port z Unity Timetable.SignalInfo.
+    /// Signal from OSM (railway=signal). Ported from Unity's Timetable.SignalInfo.
     /// </summary>
     public class GraphSignalInfo
     {
         public int NodeId;                       // PathNodeId snapped position
         public GraphSignalFunction Function;
         public GraphSignalDirection Direction;
-        public string? RefNum;                    // ref tag z OSM
+        public string? RefNum;                    // ref tag from OSM
     }
 }

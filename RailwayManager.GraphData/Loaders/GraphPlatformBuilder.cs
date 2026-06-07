@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Builder dla StationPlatforms z Platforms layer (railway=platform). Centroid + snap
-    /// do najbliższego node grafu (mapowanie na stację). Port z Unity PlatformLoader.
+    /// Builder for StationPlatforms from the Platforms layer (railway=platform). Centroid + snap
+    /// to the nearest graph node (mapping to a station). Ported from Unity's PlatformLoader.
     /// </summary>
     public static class GraphPlatformBuilder
     {

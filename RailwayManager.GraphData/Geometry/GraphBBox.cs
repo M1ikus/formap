@@ -3,8 +3,8 @@ using System;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Bounding box w 2D — analog do formap.BBox ale w shared library bez Unity dependency.
-    /// Używany dla AdminRegion / quick-reject w PIP tests / spatial culling.
+    /// 2D bounding box — analogous to formap.BBox but in the shared library without a Unity dependency.
+    /// Used for AdminRegion / quick-reject in PIP tests / spatial culling.
     /// </summary>
     [Serializable]
     public struct GraphBBox

@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Builder dla CityPlaces z Places layer (place=city|town|village). Dedup po name+type.
-    /// Voivodeship resolved jeśli resolver przekazany. Port z Unity PlaceLoader.
+    /// Builder for CityPlaces from the Places layer (place=city|town|village). Dedup by name+type.
+    /// Voivodeship resolved if a resolver is passed. Ported from Unity's PlaceLoader.
     /// </summary>
     public static class GraphPlaceBuilder
     {

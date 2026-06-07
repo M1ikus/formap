@@ -6,8 +6,8 @@ using System.Text;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Binary deserializer dla InitState. Mirror format do <see cref="InitStateWriter"/>.
-    /// Sprawdza Magic + Version, throw na niezgodność (force regenerate w formap).
+    /// Binary deserializer for InitState. Mirrors the format of <see cref="InitStateWriter"/>.
+    /// Checks Magic + Version and throws on a mismatch (forces regeneration in formap).
     /// </summary>
     public static class InitStateReader
     {
@@ -62,7 +62,7 @@ namespace RailwayManager.GraphData
             return state;
         }
 
-        /// <summary>Quick check czy plik valid + countryCode zgodny — bez pełnego load.</summary>
+        /// <summary>Quick check whether the file is valid and the countryCode matches — without a full load.</summary>
         public static bool IsValidFor(string path, string expectedCountryCode, long maxAcceptedSourceMtime)
         {
             try
@@ -149,7 +149,7 @@ namespace RailwayManager.GraphData
                     IsOsmForward = br.ReadBoolean()
                 };
                 string? trackRef = ReadString(br);
-                // v3 (2026-05-11): railway:line_ref (numer linii kolejowej z OSM route relations).
+                // v3 (2026-05-11): railway:line_ref (railway line number from OSM route relations).
                 string? lineRef = ReadString(br);
                 if (!string.IsNullOrEmpty(trackRef) || !string.IsNullOrEmpty(lineRef))
                 {
@@ -217,7 +217,7 @@ namespace RailwayManager.GraphData
                 {
                     PlatformId = br.ReadInt32(),
                     StationNodeId = br.ReadInt32(),
-                    // v2 (2026-05-11): centroid peronu (2 floats).
+                    // v2 (2026-05-11): platform centroid (2 floats).
                     Position = new GraphPoint(br.ReadSingle(), br.ReadSingle()),
                     PlatformName = ReadString(br),
                     TrackRef = ReadString(br),

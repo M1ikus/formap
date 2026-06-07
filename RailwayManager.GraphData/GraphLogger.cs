@@ -3,8 +3,8 @@ using System;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Logger callbacks dla shared library. Caller (Unity → Debug.Log, formap → Console.WriteLine)
-    /// sets Info/Warn/Error sinks. Library nie hardcoduje na UnityEngine ani System.Console.
+    /// Logger callbacks for the shared library. The caller (Unity → Debug.Log, formap → Console.WriteLine)
+    /// sets the Info/Warn/Error sinks. The library does not hardcode UnityEngine or System.Console.
     /// </summary>
     public static class GraphLogger
     {

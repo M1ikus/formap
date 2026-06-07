@@ -49,7 +49,7 @@ namespace formap;
 /// </summary>
 public static class BinaryFormat
 {
-    public const string MagicV7 = "FORMAP03"; // v7+: LayerCount=13 (od 2026-04-23 dodano Coastlines, breaking change)
+    public const string MagicV7 = "FORMAP03"; // v7+: LayerCount=13 (Coastlines added on 2026-04-23, breaking change)
     public const int LODCount = 6;
 
     public enum LayerType : int
@@ -69,7 +69,7 @@ public static class BinaryFormat
         Coastlines = 12       // OSM natural=coastline ways - polylines (used for synthetic water)
     }
 
-    /// <summary>Liczba wartości w enum LayerType — używaj zamiast hardcoded 13.</summary>
+    /// <summary>Number of values in the LayerType enum — use this instead of a hardcoded 13.</summary>
     public const int LayerCount = 13;
     
     public static void WriteLayerHeader(BinaryWriter writer, LayerType layerType, int featureCount)
@@ -78,7 +78,7 @@ public static class BinaryFormat
         writer.Write(featureCount);
     }
 
-    // ==================== FORMAT v7 METHODS (Multi-LOD) ====================
+    // --- Format v7 (multi-LOD) ---
 
     /// <summary>
     /// Per-LOD data stored in tile index

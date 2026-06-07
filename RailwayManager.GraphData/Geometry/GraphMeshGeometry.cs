@@ -3,12 +3,12 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Geometric feature z OSM (line/polygon/point) — port formap.MeshGeometry do shared library.
-    /// Używana jako input dla PathfindingGraph build (Railways layer features).
+    /// Geometric feature from OSM (line/polygon/point) — a port of formap.MeshGeometry to the shared library.
+    /// Used as input for the PathfindingGraph build (Railways layer features).
     ///
-    /// formap pre-build: parsuje tile bytes do GraphMeshGeometry list, przekazuje do builder.
-    /// Unity nie używa bezpośrednio (Unity ma własny formap.MeshGeometry dla tile rendering),
-    /// tylko pośrednio przez serialized init-state.bin.
+    /// formap pre-build: parses tile bytes into a GraphMeshGeometry list and passes it to the builder.
+    /// Unity does not use it directly (Unity has its own formap.MeshGeometry for tile rendering),
+    /// only indirectly through the serialized init-state.bin.
     /// </summary>
     public class GraphMeshGeometry
     {

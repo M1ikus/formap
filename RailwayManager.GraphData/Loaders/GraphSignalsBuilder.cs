@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Builder dla SignalInfo z POIs layer (railway=signal). Snap do graph + parse function.
-    /// Port z Unity SignalsStreamProcessor / TimetableInitializer.LoadSignals.
+    /// Builder for SignalInfo from the POIs layer (railway=signal). Snap to graph + parse function.
+    /// Ported from Unity's SignalsStreamProcessor / TimetableInitializer.LoadSignals.
     /// </summary>
     public static class GraphSignalsBuilder
     {

@@ -5,7 +5,7 @@ using System.Text;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Binary serializer dla InitState. Format:
+    /// Binary serializer for InitState. Format:
     ///
     /// MAGIC (9 bytes ASCII "INITSTATE")
     /// VERSION (4B int)
@@ -15,8 +15,8 @@ namespace RailwayManager.GraphData
     ///   CellSizeM (4B float)
     ///   JunctionToleranceM (4B float)
     ///   GraphCellSizeM (4B float)
-    ///   Counts (9 × 4B int) — dla early validation
-    /// SECTIONS (po sobie):
+    ///   Counts (9 × 4B int) — for early validation
+    /// SECTIONS (one after another):
     ///   1. AdminRegions
     ///   2. PathfindingGraph (nodes + edges + junctionIds + cellSize)
     ///   3. Places
@@ -134,8 +134,8 @@ namespace RailwayManager.GraphData
                 bw.Write(e.LengthM);
                 bw.Write(e.MaxSpeedKmh);
                 bw.Write(e.IsOsmForward);
-                // Metadata: zapisujemy "railway:track_ref" (used by BlockSection) + "railway:line_ref"
-                // (v3 2026-05-11: numer linii kolejowej z OSM route relations propagated przez formap).
+                // Metadata: we write "railway:track_ref" (used by BlockSection) + "railway:line_ref"
+                // (v3 2026-05-11: railway line number from OSM route relations, propagated by formap).
                 if (e.Metadata != null && e.Metadata.TryGetValue("railway:track_ref", out var tr))
                     WriteString(bw, tr);
                 else
@@ -187,7 +187,7 @@ namespace RailwayManager.GraphData
             {
                 bw.Write(p.PlatformId);
                 bw.Write(p.StationNodeId);
-                // v2 (2026-05-11): centroid peronu (2 floats) — używany do propagacji peron→tor track_ref.
+                // v2 (2026-05-11): platform centroid (2 floats) — used to propagate platform→track track_ref.
                 bw.Write(p.Position.X);
                 bw.Write(p.Position.Y);
                 WriteString(bw, p.PlatformName);

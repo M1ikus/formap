@@ -2,21 +2,21 @@ namespace RailwayManager.GraphData
 {
     public enum GraphPlaceType
     {
-        City,    // place=city — duże miasta
-        Town,    // place=town — średnie
-        Village  // place=village — wsie
+        City,    // place=city — large cities
+        Town,    // place=town — medium-sized
+        Village  // place=village — villages
     }
 
     /// <summary>
-    /// Miasto/miejscowość/wieś z OSM. Port z Unity Timetable.CityPlace.
+    /// City/town/village from OSM. Ported from Unity's Timetable.CityPlace.
     /// </summary>
     public class GraphCityPlace
     {
         public string? Name;
         public GraphPoint Position;
         public GraphPlaceType Type;
-        public int Population;        // 0 jeśli brak tagu
-        public string? Voivodeship;    // wypełniany przez resolver post-build
+        public int Population;        // 0 if the tag is missing
+        public string? Voivodeship;    // filled in by the resolver post-build
 
         public bool IsMajor => Type == GraphPlaceType.City || Type == GraphPlaceType.Town;
     }

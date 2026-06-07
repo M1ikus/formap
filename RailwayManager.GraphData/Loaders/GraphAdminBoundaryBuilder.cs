@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Builder dla AdminRegions z AdminBoundaries layer features. Deduplikuje po name
-    /// (formap replikuje feature do tile boundary). Port z Unity AdminBoundaryLoader.
+    /// Builder for AdminRegions from AdminBoundaries layer features. Deduplicates by name
+    /// (formap replicates a feature up to the tile boundary). Ported from Unity's AdminBoundaryLoader.
     /// </summary>
     public static class GraphAdminBoundaryBuilder
     {

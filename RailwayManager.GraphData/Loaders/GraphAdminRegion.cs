@@ -3,16 +3,16 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Granica administracyjna z OSM (country lub voivodeship). Polygon trzymany jako
-    /// triangle list (vertices + indices), PIP test iteruje po trójkątach.
-    /// Port z Unity Timetable.AdminRegion.
+    /// Administrative boundary from OSM (country or voivodeship). The polygon is held as a
+    /// triangle list (vertices + indices); the PIP test iterates over the triangles.
+    /// Ported from Unity's Timetable.AdminRegion.
     /// </summary>
     public class GraphAdminRegion
     {
         public string? Name;
-        public int AdminLevel;       // 2 = country, 4 = województwo
-        public string? Iso3166_1;     // np. "PL"
-        public string? Iso3166_2;     // np. "PL-MZ"
+        public int AdminLevel;       // 2 = country, 4 = voivodeship
+        public string? Iso3166_1;     // e.g. "PL"
+        public string? Iso3166_2;     // e.g. "PL-MZ"
         public GraphBBox BoundingBox;
 
         public List<GraphPoint> Vertices = new List<GraphPoint>();

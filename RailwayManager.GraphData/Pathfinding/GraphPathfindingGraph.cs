@@ -4,15 +4,15 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Graf pathfindingu zbudowany z Railways MeshGeometry. Port z Unity PathfindingGraph
-    /// do shared library — używany w pre-build w formap, Unity loaduje wynik z init-state.bin.
+    /// Pathfinding graph built from Railways MeshGeometry. Ported from Unity's PathfindingGraph
+    /// to the shared library — used in the formap pre-build; Unity loads the result from init-state.bin.
     ///
-    /// Kluczowa metoda: <see cref="BuildFromFeaturesUnionFind"/> — Union-Find merging
-    /// raw vertices które są blisko siebie (junctions, endpoints), z guards
-    /// (perpendicular offset + track_ref) blokującymi false merges między równoległymi torami.
+    /// Key method: <see cref="BuildFromFeaturesUnionFind"/> — Union-Find merging of
+    /// raw vertices that are close together (junctions, endpoints), with guards
+    /// (perpendicular offset + track_ref) that block false merges between parallel tracks.
     ///
-    /// MVP: Edge.Geometry = null (eliminuje 100k+ List allocs w Step 4 build edges).
-    /// Wizualizacja trasy: prosta linia node→node lub on-demand reconstruct.
+    /// MVP: Edge.Geometry = null (eliminates 100k+ List allocations in the Step 4 edge build).
+    /// Route visualization: a straight node→node line or an on-demand reconstruct.
     /// </summary>
     public class GraphPathfindingGraph
     {
@@ -34,14 +34,14 @@ namespace RailwayManager.GraphData
         // ─────────────────────────────────────────────
 
         /// <summary>
-        /// Buduje graf z railway features. Algorytm:
-        /// 1. Każdy vertex każdego feature startuje jako osobny "raw node"
-        /// 2. Union-Find merguje raw nodes których pozycje są w zadanej tolerancji (cellSizeM)
-        /// 3. Finalne PathfindingGraph nodes = UF components (centroid pozycji)
-        /// 4. Edges z feature chain — segment per pair consecutive vertices, deduplikacja
+        /// Builds the graph from railway features. Algorithm:
+        /// 1. Every vertex of every feature starts as a separate "raw node"
+        /// 2. Union-Find merges raw nodes whose positions are within the given tolerance (cellSizeM)
+        /// 3. Final PathfindingGraph nodes = UF components (centroid of positions)
+        /// 4. Edges from the feature chain — one segment per pair of consecutive vertices, deduplicated
         /// </summary>
-        /// <param name="junctionOnlyMerge">Gdy true, merging między wayami tylko na junction
-        /// vertices (OSM shared nodes) lub endpoint'ach. Zapobiega fałszywym skrótom.</param>
+        /// <param name="junctionOnlyMerge">When true, merging between ways happens only at junction
+        /// vertices (OSM shared nodes) or endpoints. Prevents false shortcuts.</param>
         public void BuildFromFeaturesUnionFind(List<GraphMeshGeometry> railwayFeatures,
             float cellSizeM = 10f, bool junctionOnlyMerge = true)
         {
@@ -52,7 +52,7 @@ namespace RailwayManager.GraphData
 
             if (railwayFeatures == null) return;
 
-            // Pre-pass: count total vertices for List capacity (eliminuje N reallocs)
+            // Pre-pass: count total vertices for List capacity (eliminates N reallocations)
             int totalVertices = 0;
             for (int fi = 0; fi < railwayFeatures.Count; fi++)
             {
@@ -62,7 +62,7 @@ namespace RailwayManager.GraphData
             }
             GraphLogger.LogInfo($"[GraphPathfindingGraph] Pre-pass: {railwayFeatures.Count} features → {totalVertices} total vertices");
 
-            // Step 1: zbierz raw nodes + junction flags + endpoint flags + track_ref + direction
+            // Step 1: collect raw nodes + junction flags + endpoint flags + track_ref + direction
             var rawPositions = new List<GraphPoint>(totalVertices);
             var rawIsJunction = new List<bool>(totalVertices);
             var rawIsEndpoint = new List<bool>(totalVertices);
@@ -112,7 +112,7 @@ namespace RailwayManager.GraphData
             }
             GraphLogger.LogInfo($"[GraphPathfindingGraph] Step 1 done. Features with track_ref: {featuresWithTrackRef}/{railwayFeatures.Count}");
 
-            // Step 2: Union-Find merge (junction↔junction + endpoint↔endpoint, z guards)
+            // Step 2: Union-Find merge (junction↔junction + endpoint↔endpoint, with guards)
             const float perpThresholdM = 1.0f;
             var uf = new GraphUnionFind(rawPositions.Count);
             var cellMap = new Dictionary<long, List<int>>();
@@ -154,7 +154,7 @@ namespace RailwayManager.GraphData
                             float perpDist = Math.Abs(GraphPoint.Dot(offset, perpI));
                             if (perpDist > perpThresholdM) { blockedByPerp++; continue; }
 
-                            // Guard 2: Track-ref (tylko endpoint↔endpoint)
+                            // Guard 2: Track-ref (endpoint↔endpoint only)
                             if (!rawIsJunction[i] && !rawIsJunction[j])
                             {
                                 var trI = rawTrackRef[i];
@@ -176,7 +176,7 @@ namespace RailwayManager.GraphData
             GraphLogger.LogInfo($"[GraphPathfindingGraph] Step 2 (Union-Find) merges: {mergesByJunction} junction, "
                      + $"{mergesByEndpoint} endpoint | blocked: {blockedByPerp} perp, {blockedByTrackRef} track_ref");
 
-            // Step 2.5: Rescue merge — pair raw vertices w RÓŻNYCH komponentach i blisko (<2.5m)
+            // Step 2.5: Rescue merge — pair raw vertices in DIFFERENT components that are close (<2.5m)
             const float rescueRadiusM = 2.5f;
             float rescueRadiusSq = rescueRadiusM * rescueRadiusM;
             int rescueMerges = 0, rescueBlockedByPerp = 0, rescueBlockedByTrackRef = 0;
@@ -214,7 +214,7 @@ namespace RailwayManager.GraphData
             GraphLogger.LogInfo($"[GraphPathfindingGraph] Step 2.5 rescue merges: {rescueMerges} | "
                      + $"blocked: {rescueBlockedByPerp} perp, {rescueBlockedByTrackRef} track_ref");
 
-            // Step 3: Centroid pozycji per UF component + tworzenie nodes + spatial grid
+            // Step 3: Centroid of positions per UF component + node creation + spatial grid
             JunctionNodeIds = new HashSet<int>();
             var componentToNode = new Dictionary<int, int>();
             var componentSum = new Dictionary<int, GraphPoint>();
@@ -267,7 +267,7 @@ namespace RailwayManager.GraphData
             }
             GraphLogger.LogInfo($"[GraphPathfindingGraph] Step 3 done — {_nodes.Count} nodes, {JunctionNodeIds.Count} junctions");
 
-            // Step 4: Build edges z feature chain (skip geometry storage dla MVP)
+            // Step 4: Build edges from the feature chain (skip geometry storage for the MVP)
             var edgeKey = new HashSet<long>();
             int estimatedEdges = railwayFeatures.Count * 30;
             if (_edges.Capacity < estimatedEdges) _edges.Capacity = estimatedEdges;
@@ -343,8 +343,8 @@ namespace RailwayManager.GraphData
         }
 
         /// <summary>
-        /// Populate graph z deserialized data (Unity load init-state.bin). Rebuilds
-        /// spatial grid z node positions.
+        /// Populate the graph from deserialized data (Unity loading init-state.bin). Rebuilds
+        /// the spatial grid from node positions.
         /// </summary>
         public void LoadFromSerializedData(List<GraphNode> nodes, List<GraphEdge> edges,
             HashSet<int> junctionIds, float cellSize)
@@ -371,7 +371,7 @@ namespace RailwayManager.GraphData
             GraphLogger.LogInfo($"[GraphPathfindingGraph] LoadFromSerializedData: {_nodes.Count} nodes, {_edges.Count} edges, {JunctionNodeIds.Count} junctions, spatial cells: {_spatialGrid.Count}");
         }
 
-        /// <summary>Znajduje najbliższy node w promieniu maxRadiusM. Zwraca -1 gdy brak.</summary>
+        /// <summary>Finds the nearest node within radius maxRadiusM. Returns -1 if none.</summary>
         public int FindNearestNode(GraphPoint position, float maxRadiusM)
         {
             int cellRadius = (int)Math.Ceiling(maxRadiusM / CellSize);

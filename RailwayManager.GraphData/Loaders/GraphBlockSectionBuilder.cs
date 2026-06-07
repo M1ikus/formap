@@ -3,15 +3,15 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Buduje odcinki blokowe z PathfindingGraph. Granice = stacje (boundaryNodeIds) +
-    /// rozjazdy (3+ edges) + dead-ends. Port z Unity BlockSectionBuilder.
+    /// Builds block sections from the PathfindingGraph. Boundaries = stations (boundaryNodeIds) +
+    /// turnouts (3+ edges) + dead-ends. Ported from Unity's BlockSectionBuilder.
     /// </summary>
     public static class GraphBlockSectionBuilder
     {
         public struct BuildResult
         {
             public List<GraphBlockSection> Sections;
-            public int[] EdgeToSection; // edgeId → sectionId, -1 gdy brak
+            public int[] EdgeToSection; // edgeId → sectionId, -1 if none
         }
 
         public static BuildResult Build(GraphPathfindingGraph graph, HashSet<int> boundaryNodeIds)

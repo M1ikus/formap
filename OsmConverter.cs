@@ -47,10 +47,10 @@ public class OsmConverter
     private readonly List<(Way way, List<Vector2> coords, TagsCollectionBase tags)> bufferedRailways = new();
 
     /// <summary>
-    /// M-TimetableUX 2026-05-11: mapping way_id → set of railway line refs (numerów linii kolejowych).
-    /// OSM ma `ref` na relation `route=tracks`/`route=railway`, NIE na pojedynczych ways. Parsujemy
-    /// relacje railway route i propagujemy `ref` na member ways jako tag `railway:line_ref`.
-    /// Multi-relation way (np. linia 9 i 250 na tym samym torze) → multi-ref "9;250".
+    /// Mapping way_id → set of railway line refs (railway line numbers).
+    /// OSM stores `ref` on the relation `route=tracks`/`route=railway`, NOT on individual ways. We parse
+    /// the railway route relations and propagate `ref` onto member ways as the tag `railway:line_ref`.
+    /// A multi-relation way (e.g. lines 9 and 250 on the same track) → multi-ref "9;250".
     /// </summary>
     private readonly Dictionary<long, HashSet<string>> _wayIdToLineRefs = new();
     private readonly List<(Way way, List<Vector2> coords, TagsCollectionBase tags)> bufferedPolygonWays = new();
@@ -395,8 +395,8 @@ public class OsmConverter
             bufferedWaterwayWays.Clear();
         }
 
-        // Process buffered coastline ways — zachowane jako raw lines (no triangulation),
-        // używane przez Unity SyntheticWaterRenderer do generowania water polygons.
+        // Process buffered coastline ways — kept as raw lines (no triangulation),
+        // used by Unity's SyntheticWaterRenderer to generate water polygons.
         if (bufferedCoastlineWays.Count > 0)
         {
             phaseTimer = Stopwatch.StartNew();
@@ -679,8 +679,8 @@ public class OsmConverter
                 Console.WriteLine($"[DEBUG] Found waterway way {way.Id}: {name}, coords: {coords.Count}");
             }
         }
-        // Coastlines wyłączone — nie używane (Zatoka/Zalew/Bałtyk pokrywane przez natural=bay/place=sea
-        // multipolygons w Water layer + CountryOutsideMesh dla outside PL).
+        // Coastlines disabled — not used (gulfs/lagoons/Baltic are covered by natural=bay/place=sea
+        // multipolygons in the Water layer + CountryOutsideMesh for areas outside PL).
         // else if (IsCoastline(tags)) { bufferedCoastlineWays.Add((way, coords, tags)); }
         else if (IsRailway(tags))
         {
@@ -707,7 +707,7 @@ public class OsmConverter
     private static bool IsWaterFeature(TagsCollectionBase tags)
     {
         // natural=water polygon (lake, pond, etc.)
-        // natural=bay — zatoki morskie (Zatoka Gdańska, zalewy jak Wiślany)
+        // natural=bay — sea bays (Gulf of Gdańsk, lagoons such as the Vistula Lagoon)
         if (tags.ContainsKey("natural"))
         {
             string naturalType = tags["natural"];
@@ -715,7 +715,7 @@ public class OsmConverter
                 return true;
         }
 
-        // place=sea — morza jako multipolygon relations (Bałtyk, jeśli jest w PBF)
+        // place=sea — seas as multipolygon relations (the Baltic, if present in the PBF)
         if (tags.ContainsKey("place") && tags["place"] == "sea")
             return true;
 
@@ -791,9 +791,9 @@ public class OsmConverter
     }
 
     /// <summary>
-    /// natural=coastline — OSM linia brzegu morskiego. Way (line, nie polygon).
-    /// Używane przez Unity SyntheticWaterRenderer do generowania mesh'y Bałtyku i Zalewu Wiślanego
-    /// (PBF Polski nie zawiera natural=water dla Bałtyku — relacja zbyt duża).
+    /// natural=coastline — OSM sea shoreline. A way (line, not a polygon).
+    /// Used by Unity's SyntheticWaterRenderer to generate meshes for the Baltic and the Vistula Lagoon
+    /// (the Poland PBF does not contain natural=water for the Baltic — the relation is too large).
     /// </summary>
     private static bool IsCoastline(TagsCollectionBase tags)
     {
@@ -811,12 +811,12 @@ public class OsmConverter
 
         string railwayType = tags["railway"];
 
-        // Skip projected/planned/construction — niegrywalne.
+        // Skip projected/planned/construction — not playable.
         if (railwayType == "construction" || railwayType == "proposed" || railwayType == "planned")
             return false;
 
-        // Disused/abandoned: accept mainline rail (Unity render szare),
-        // SKIP disused tram/narrow_gauge/subway/light_rail/monorail (user nie chce widzieć nieużywanych tramwajów/wąskotorówek).
+        // Disused/abandoned: accept mainline rail (Unity renders it gray),
+        // SKIP disused tram/narrow_gauge/subway/light_rail/monorail (the user does not want to see unused trams/narrow-gauge lines).
         if (railwayType == "disused" || railwayType == "abandoned")
         {
             string? originalType = null;
@@ -825,13 +825,13 @@ public class OsmConverter
             if (originalType == "tram" || originalType == "subway" || originalType == "monorail"
                 || originalType == "narrow_gauge" || originalType == "light_rail")
                 return false;
-            return true; // disused mainline rail → accept, render szare
+            return true; // disused mainline rail → accept, rendered gray
         }
 
-        // ACTIVE tram/subway/monorail/narrow_gauge/light_rail — wchodzą do bin.
-        // Unity MapRenderer ukrywa je dla LOD>2 (transitOnly branch).
+        // ACTIVE tram/subway/monorail/narrow_gauge/light_rail — included in the bin.
+        // Unity's MapRenderer hides them at LOD>2 (transitOnly branch).
 
-        // Skip POI types (station/halt/signal/platform renderowane przez POI layer).
+        // Skip POI types (station/halt/signal/platform rendered via the POI layer).
         return railwayType != "platform" &&
                railwayType != "station" &&
                railwayType != "halt" &&
@@ -880,8 +880,8 @@ public class OsmConverter
     }
 
     /// <summary>
-    /// M-TimetableUX 2026-05-11: detect railway route relations (linie kolejowe).
-    /// OSM `type=route` + `route=tracks|railway|train` z `ref` tag (numer linii).
+    /// Detect railway route relations.
+    /// OSM `type=route` + `route=tracks|railway|train` with a `ref` tag (the line number).
     /// </summary>
     private static bool IsRailwayRouteRelation(Relation relation)
     {
@@ -893,10 +893,10 @@ public class OsmConverter
     }
 
     /// <summary>
-    /// M-TimetableUX 2026-05-11: propagacja `ref` z railway route relation na member ways.
-    /// Zapisuje mapping way_id → set of refs do `_wayIdToLineRefs`. Multi-ref ("9;204")
-    /// w relation jest splitowane na osobne refs. Member way może należeć do wielu relacji
-    /// (np. linia 9 + 250 na tym samym torze) → multi-ref join.
+    /// Propagate `ref` from a railway route relation onto its member ways.
+    /// Stores the mapping way_id → set of refs in `_wayIdToLineRefs`. A multi-ref ("9;204")
+    /// on the relation is split into separate refs. A member way may belong to multiple relations
+    /// (e.g. lines 9 + 250 on the same track) → multi-ref join.
     /// </summary>
     private void ProcessRailwayRouteRelation(Relation relation)
     {
@@ -988,10 +988,10 @@ public class OsmConverter
             return;
 
         // Build closed rings from all way groups.
-        // Dla water (natural=water/bay, place=sea, water=*) podnosimy maxCloseGap do 200km — outer ring
-        // może być cropowany na granicy kraju (Zatoka Gdańska, Zalew Wiślany, Bałtyk z RU strony).
-        // Auto-close gap między first/last vertex tworzy "sztuczne" zamknięcie po granicy PL — akceptowalne
-        // bo Bałtyk/zatoka i tak pokryta przez CountryOutsideMesh poza PL.
+        // For water (natural=water/bay, place=sea, water=*) we raise maxCloseGap to 200km — the outer ring
+        // may be cropped at the country border (Gulf of Gdańsk, Vistula Lagoon, Baltic on the RU side).
+        // The auto-close gap between the first/last vertex creates an "artificial" closure along the PL
+        // border — acceptable, because the Baltic/gulf is covered by CountryOutsideMesh outside PL anyway.
         bool isWaterMP = IsWaterFeature(tags);
         float gapOverride = isWaterMP ? 200000f : 30f;
         var closedOuterRings = BuildClosedRings(outerWays, gapOverride);
@@ -1010,8 +1010,8 @@ public class OsmConverter
         // Administrative boundaries (voivodeship, country) are very large polygons with high
         // vertex counts — pre-simplify aggressively to fit under CreateSinglePolygonMesh limits.
         // For gameplay detection ("in which voivodeship is station X") ~250m precision is plenty.
-        // PRZEDTEM: 100m tolerance pomijał Polskę (>8000 verts po 100m), mazowieckie, wielkopolskie.
-        // 250m tolerance: Polska ~3-5k verts, województwa ~500-1500 verts — wszystko się mieści.
+        // PREVIOUSLY: 100m tolerance dropped Poland (>8000 verts after 100m), Mazowieckie, Wielkopolskie.
+        // 250m tolerance: Poland ~3-5k verts, voivodeships ~500-1500 verts — everything fits.
         if (isAdmin)
         {
             var simplifiedOuter = new List<List<Vector2>>(closedOuterRings.Count);
@@ -1031,7 +1031,7 @@ public class OsmConverter
             closedInnerRings = simplifiedInner;
         }
 
-        // Diagnostyka admin features — co weszło do build
+        // Diagnostics for admin features — what made it into the build
         if (isAdmin)
         {
             tags.TryGetValue("name", out var adminName);
@@ -1401,13 +1401,13 @@ public class OsmConverter
         var outerCoords = new List<Vector2>(outerRing);
 
         // Simplify outer polygon if needed - LibTessDotNet handles large polygons well.
-        // PRZEDTEM: 8000 limit pomijał Polskę country polygon (~30k verts raw, >8k po simplifikacji).
-        // 30000 limit: Polska po pre-simplifikacji 250m to ~3-5k, mazowieckie ~1.5k — wszystko mieści.
+        // PREVIOUSLY: an 8000 limit dropped the Poland country polygon (~30k verts raw, >8k after simplification).
+        // 30000 limit: Poland after 250m pre-simplification is ~3-5k, Mazowieckie ~1.5k — everything fits.
         const int MAX_OUTER_VERTICES = 30000;
         if (outerCoords.Count > MAX_OUTER_VERTICES)
         {
-            // Iterative simplification z rosnącą tolerancją (5m → 10m → 50m → 200m)
-            // dopóki polygon się nie zmieści lub nie wygnijemy w 0.
+            // Iterative simplification with increasing tolerance (5m → 10m → 50m → 200m)
+            // until the polygon fits or we degenerate to 0.
             float[] tolerances = { 5f, 10f, 50f, 200f, 1000f };
             foreach (var tol in tolerances)
             {
@@ -1704,10 +1704,10 @@ public class OsmConverter
         const float mergeEps = 3.0f;
 
         // Maximum gap to auto-close a ring (in meters).
-        // Default 30m dla małych polygons (buildings, jeziora).
-        // Dla water/bay/sea relations na granicy kraju (np. Zatoka Gdańska 8259509, Zalew Wiślany 8140878)
-        // outer ring biegnie też przez Bałtyk i jest CROPOWANY na granicy RU/DE w PBF Polski.
-        // Caller może podnieść override dla water features (np. 100000 = 100km).
+        // Default 30m for small polygons (buildings, lakes).
+        // For water/bay/sea relations at the country border (e.g. Gulf of Gdańsk 8259509, Vistula Lagoon 8140878)
+        // the outer ring also runs through the Baltic and is CROPPED at the RU/DE border in the Poland PBF.
+        // The caller may raise the override for water features (e.g. 100000 = 100km).
         float maxCloseGap = maxCloseGapOverride;
 
         bool nearlyEqual(Vector2 a, Vector2 b) =>
@@ -1847,7 +1847,7 @@ public class OsmConverter
         if (tags == null)
             return;
 
-        // Railway POIs (stations, halts, signals) — warstwa POIs
+        // Railway POIs (stations, halts, signals) — POIs layer
         bool isStation = tags.ContainsKey("railway") &&
                         (tags["railway"] == "station" || tags["railway"] == "halt");
         bool isSignal = tags.ContainsKey("railway") && tags["railway"] == "signal";
@@ -1860,8 +1860,8 @@ public class OsmConverter
             return;
         }
 
-        // Cities, towns, villages — osobna warstwa Places (do detekcji aglomeracji,
-        // walidacji nazw stacji, przyszłej gęstości populacji)
+        // Cities, towns, villages — a separate Places layer (for detecting agglomerations,
+        // validating station names, and future population density)
         bool isPlace = tags.ContainsKey("place") &&
                        (tags["place"] == "city" || tags["place"] == "town" || tags["place"] == "village");
         if (isPlace)
@@ -1949,28 +1949,28 @@ public class OsmConverter
 
         return highwayType switch
         {
-            // Autostrady i drogi ekspresowe - najgrubsze
+            // Motorways and expressways - thickest
             "motorway" or "motorway_link" or "trunk" or "trunk_link" => 6.0f,
 
-            // Drogi główne
+            // Main roads
             "primary" or "primary_link" => 5.0f,
 
-            // Drogi drugorzędne
+            // Secondary roads
             "secondary" or "secondary_link" => 4.0f,
 
-            // Drogi lokalne
+            // Local roads
             "tertiary" or "tertiary_link" => 3.0f,
 
-            // Drogi mieszkalne
+            // Residential roads
             "residential" or "living_street" or "unclassified" or "road" => 2.5f,
 
-            // Drogi serwisowe
+            // Service roads
             "service" => 2.0f,
 
-            // Ścieżki - najcieńsze
+            // Paths - thinnest
             "footway" or "path" or "cycleway" or "pedestrian" or "steps" or "track" or "bridleway" => 1.0f,
 
-            // Domyślnie
+            // Default
             _ => 1.5f
         };
     }
@@ -2282,12 +2282,12 @@ public class OsmConverter
         
         // Extract metadata + add railway graph info
         ExtractMetadata(geom, tags);
-        // M-TimetableUX 2026-05-11: propagate railway:line_ref z railway route relations.
-        // OSM `ref` na ways jest rzadkie; numer linii kolejowej (np. "9", "204") jest na relation
-        // `route=tracks`. Mapping wayId → refs zbudowany w ProcessRailwayRouteRelation.
+        // Propagate railway:line_ref from railway route relations.
+        // OSM `ref` on ways is rare; the railway line number (e.g. "9", "204") is on the relation
+        // `route=tracks`. The wayId → refs mapping is built in ProcessRailwayRouteRelation.
         if (way.Id.HasValue && _wayIdToLineRefs.TryGetValue(way.Id.Value, out var lineRefs) && lineRefs.Count > 0)
         {
-            // Sort numerycznie ascending (1, 2, 9, 204) → string join ";"
+            // Sort numerically ascending (1, 2, 9, 204) → string join ";"
             var sortedRefs = new List<string>(lineRefs);
             sortedRefs.Sort((a, b) =>
             {
@@ -2357,7 +2357,7 @@ public class OsmConverter
         return new Vector2((float)x, (float)y);
     }
     
-    // ==================== FORMAT v7 — Multi-LOD ====================
+    // --- Format v7 (multi-LOD) ---
 
     /// <summary>
     /// Writes map data in v7 format with 6 LOD levels per tile
@@ -2521,7 +2521,7 @@ public class OsmConverter
         LogInfo($"  Non-empty tiles: {nonEmptyTiles:N0}");
     }
 
-    // ==================== 6-LEVEL LOD SYSTEM ====================
+    // --- 6-level LOD system ---
 
     /// <summary> LOD1 (1000-2000): residential+ roads, all buildings, all POIs. No paths/footways/service. </summary>
     private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel1(
@@ -2567,7 +2567,7 @@ public class OsmConverter
                     break;
                 case BinaryFormat.LayerType.Waterways:
                 case BinaryFormat.LayerType.Military:
-                case BinaryFormat.LayerType.Coastlines: // tylko LOD0/1 — używane raz przy init przez SyntheticWaterRenderer
+                case BinaryFormat.LayerType.Coastlines: // LOD0/1 only — used once at init by SyntheticWaterRenderer
                     break; // skip
                 default:
                     result[lt] = features;
@@ -2681,7 +2681,7 @@ public class OsmConverter
         return pt is "city" or "town";
     }
 
-    // ==================== ROAD CLASSIFICATION HELPERS ====================
+    // --- Road classification helpers ---
 
     /// <summary> Residential and above (no footway, path, service, track, cycleway) </summary>
     private static bool IsResidentialOrAbove(MeshGeometry geom)
@@ -2704,7 +2704,7 @@ public class OsmConverter
     }
 
     /// <summary>
-    /// LOD1: only motorway, trunk, primary (autostrady, ekspresówki, główne miejskie).
+    /// LOD1: only motorway, trunk, primary (motorways, expressways, main urban roads).
     /// Returns false for everything else including features without highway metadata.
     /// </summary>
     private static bool IsMainRoad(MeshGeometry geom)

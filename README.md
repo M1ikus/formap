@@ -10,7 +10,7 @@ It parses raw OSM geometry, triangulates polygons (including concave shapes and 
 
 - **OSM parsing** (via [OsmSharp](https://github.com/OsmSharp/core)) — nodes, ways, and relations (multipolygons, railway route relations).
 - **13 feature layers** — railways, highways, buildings, water, waterways, forests, industrial, military, platforms, POIs (stations / halts / signals), admin boundaries, places, coastlines.
-- **Polygon triangulation** (via [LibTessDotNet](https://github.com/speps/LibTessDotNet)) — concave polygons and multipolygons with holes.
+- **Polygon triangulation** — a built-in ear-clipping triangulator for simple polygons, with [LibTessDotNet](https://github.com/speps/LibTessDotNet) for multipolygons with holes (ear-clipping as fallback).
 - **Spatial tiling** — 10 km × 10 km grid with a Cantor‑paired tile id for direct lookup.
 - **6 levels of detail (LOD)** — progressive per‑zoom filtering of features and road classes.
 - **LZ4‑compressed per‑tile blocks** with a seekable index — load only the tiles you need.

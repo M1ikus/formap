@@ -3,12 +3,12 @@ using System;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// 2D point z X/Y floats — blittable, używany jako Vector2 equivalent w shared library.
-    /// Eliminuje dependency na UnityEngine.Vector2 (który jest tylko w Unity) lub
-    /// System.Numerics.Vector2 (subtle różnice cross-platform). Adapter w Unity konwertuje
-    /// do/z UnityEngine.Vector2.
+    /// 2D point with X/Y floats — blittable, used as the Vector2 equivalent in the shared library.
+    /// Removes the dependency on UnityEngine.Vector2 (which exists only in Unity) or
+    /// System.Numerics.Vector2 (subtle cross-platform differences). An adapter in Unity converts
+    /// to/from UnityEngine.Vector2.
     ///
-    /// Layout: 8 bytes total, struct compatible z binary serialization (BinaryWriter/Reader).
+    /// Layout: 8 bytes total, a struct compatible with binary serialization (BinaryWriter/Reader).
     /// </summary>
     [Serializable]
     public struct GraphPoint : IEquatable<GraphPoint>

@@ -1,7 +1,7 @@
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Stacja kolejowa (railway=station|halt). Port z Unity Timetable.RailwayStation.
+    /// Railway station (railway=station|halt). Ported from Unity's Timetable.RailwayStation.
     /// </summary>
     public class GraphRailwayStation
     {
@@ -9,8 +9,8 @@ namespace RailwayManager.GraphData
         public string? Name;
         public GraphPoint Position;
         public bool IsMajorStation;        // true = railway=station, false = railway=halt
-        public int PathNodeId = -1;        // przypisany węzeł grafu (lub -1)
+        public int PathNodeId = -1;        // assigned graph node (or -1)
         public string? Voivodeship;
-        public string? CityName;            // heurystyka: prefix przed pierwszą spacją
+        public string? CityName;            // heuristic: prefix before the first space
     }
 }

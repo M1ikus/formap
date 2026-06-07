@@ -1,41 +1,41 @@
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Header dla init-state-{countryCode}.bin — pre-built initialization state
-    /// dla pełnego kraju (PathfindingGraph + Loaders cache + BlockSections).
+    /// Header for init-state-{countryCode}.bin — pre-built initialization state
+    /// for a full country (PathfindingGraph + Loaders cache + BlockSections).
     ///
-    /// **DLC architecture:** każdy kraj ma osobny plik (init-state-pl.bin, init-state-de.bin
-    /// itp.). Player kupuje DLC → game ładuje dodatkowy plik → unified pathfinding poprzez
+    /// **DLC architecture:** each country has its own file (init-state-pl.bin, init-state-de.bin,
+    /// etc.). Player buys DLC → game loads the extra file → unified pathfinding via
     /// border crossings (CrossCountryLinks section).
     ///
-    /// Format binary big-endian (BinaryWriter default little-endian — Unity i .NET 8 same).
+    /// Binary format, little-endian (BinaryWriter default — same on Unity and .NET 8).
     /// </summary>
     public class InitStateHeader
     {
-        /// <summary>Magic bytes na początku pliku — identifikuje format.</summary>
+        /// <summary>Magic bytes at the start of the file — identifies the format.</summary>
         public const string Magic = "INITSTATE";
 
-        /// <summary>Format version — bump przy breaking change. Loader sprawdza compat.
-        /// v2 (2026-05-11): GraphStationPlatform.Position field (centroid peronu).
-        /// v3 (2026-05-11): edge.metadata["railway:line_ref"] (numer linii kolejowej z OSM
-        /// route relations propagated przez formap CreateRailwayMesh).</summary>
+        /// <summary>Format version — bump on a breaking change. The loader checks compatibility.
+        /// v2 (2026-05-11): GraphStationPlatform.Position field (platform centroid).
+        /// v3 (2026-05-11): edge.metadata["railway:line_ref"] (railway line number from OSM
+        /// route relations, propagated by formap's CreateRailwayMesh).</summary>
         public const int CurrentVersion = 3;
 
-        /// <summary>ISO 3166-1 alpha-2 (PL, DE, CZ itd.) — identifikuje kraj w pliku.</summary>
+        /// <summary>ISO 3166-1 alpha-2 (PL, DE, CZ, etc.) — identifies the country in the file.</summary>
         public string? CountryCode;
 
-        /// <summary>Wersja formatu — Loader rejects gdy != CurrentVersion (force regenerate).</summary>
+        /// <summary>Format version — the loader rejects the file when != CurrentVersion (forces regeneration).</summary>
         public int Version;
 
-        /// <summary>Source map file mtime (Unix seconds) — invalidate cache gdy poland-v7.bin newer.</summary>
+        /// <summary>Source map file mtime (Unix seconds) — invalidate the cache when poland-v7.bin is newer.</summary>
         public long SourceMapMtime;
 
-        /// <summary>Build params — sprawdzane czy match runtime config.</summary>
+        /// <summary>Build params — checked against the runtime config.</summary>
         public float CellSizeM;
         public float JunctionToleranceM;
         public float GraphCellSizeM;
 
-        /// <summary>Liczby sections do early validation.</summary>
+        /// <summary>Section counts for early validation.</summary>
         public int NodeCount;
         public int EdgeCount;
         public int StationCount;

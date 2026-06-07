@@ -1,14 +1,14 @@
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Peron stacyjny (railway=platform). Port z Unity Timetable.StationPlatform.
+    /// Station platform (railway=platform). Ported from Unity's Timetable.StationPlatform.
     /// </summary>
     public class GraphStationPlatform
     {
         public int PlatformId;
-        public int StationNodeId;     // PathNodeId stacji do której peron należy
-        public GraphPoint Position;   // Centroid peronu (X, Y) z OSM Vertices — wprowadzony v2
-        public string? PlatformName;   // ref tag z OSM
+        public int StationNodeId;     // PathNodeId of the station this platform belongs to
+        public GraphPoint Position;   // Platform centroid (X, Y) from OSM Vertices — introduced in v2
+        public string? PlatformName;   // ref tag from OSM
         public string? TrackRef;       // railway:track_ref
         public float LengthM;
     }

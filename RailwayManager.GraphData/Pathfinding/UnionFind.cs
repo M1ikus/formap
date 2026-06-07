@@ -1,11 +1,11 @@
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Union-Find (disjoint set union) z path compression i union by rank.
-    /// Używany w PathfindingGraph.BuildFromFeaturesUnionFind dla mergowania
-    /// raw vertices które są blisko siebie (junctions, endpoints).
+    /// Union-Find (disjoint set union) with path compression and union by rank.
+    /// Used in PathfindingGraph.BuildFromFeaturesUnionFind to merge
+    /// raw vertices that are close together (junctions, endpoints).
     ///
-    /// Port z Unity RailwayManager.Timetable.UnionFind do shared library.
+    /// Ported from Unity's RailwayManager.Timetable.UnionFind to the shared library.
     /// O(α(N)) per Find/Union (amortized inverse-Ackermann ≈ O(1)).
     /// </summary>
     public class GraphUnionFind

@@ -10,9 +10,9 @@ class Program
         {
             Console.WriteLine("Usage: formap <input.osm.pbf> [output.bin] [--format v7] [--country PL] [--no-init-state] [--init-state-only <existing.bin>]");
             Console.WriteLine("  --format v7           Write multi-LOD tiled format (default; only v7 is supported)");
-            Console.WriteLine("  --country <code>      ISO 3166-1 alpha-2 country code dla init-state (default: PL)");
-            Console.WriteLine("  --no-init-state       Skip building init-state-<country>.bin po konwersji");
-            Console.WriteLine("  --init-state-only X   Skip OSM conversion, build init-state z istniejącego X.bin");
+            Console.WriteLine("  --country <code>      ISO 3166-1 alpha-2 country code for init-state (default: PL)");
+            Console.WriteLine("  --no-init-state       Skip building init-state-<country>.bin after conversion");
+            Console.WriteLine("  --init-state-only X   Skip OSM conversion, build init-state from existing X.bin");
             return;
         }
 
@@ -45,7 +45,7 @@ class Program
             }
         }
 
-        // Tryb --init-state-only: pomijamy konwersję, budujemy tylko init-state z istniejącego .bin
+        // --init-state-only mode: skip conversion, only build init-state from an existing .bin
         if (initStateOnlyPath != null)
         {
             if (!File.Exists(initStateOnlyPath))
@@ -80,7 +80,7 @@ class Program
 
         Console.WriteLine($"Conversion complete. Output: {outputFile}");
 
-        // Po konwersji: zbuduj init-state-<country>.bin obok poland-v7.bin.
+        // After conversion: build init-state-<country>.bin next to poland-v7.bin.
         if (buildInitState)
         {
             Console.WriteLine();
@@ -92,8 +92,8 @@ class Program
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"InitStateBuilder failed: {ex}");
-                Console.Error.WriteLine("Map .bin został zapisany OK, ale init-state.bin nie powstał.");
-                Console.Error.WriteLine("Możesz spróbować ponownie: formap --init-state-only " + outputFile + " --country " + countryCode);
+                Console.Error.WriteLine("Map .bin was saved OK, but init-state.bin was not created.");
+                Console.Error.WriteLine("You can try again: formap --init-state-only " + outputFile + " --country " + countryCode);
                 Environment.Exit(2);
             }
         }

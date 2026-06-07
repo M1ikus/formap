@@ -7,11 +7,11 @@ using RailwayManager.GraphData;
 namespace formap;
 
 /// <summary>
-/// Buduje pre-built init-state-{country}.bin obok poland-v7.bin.
-/// Czyta logic layers z .bin (Railways/AdminBoundaries/Places/POIs/Platforms),
-/// uruchamia GraphData builders, serializuje InitState.
+/// Builds the pre-built init-state-{country}.bin next to poland-v7.bin.
+/// Reads the logic layers from the .bin (Railways/AdminBoundaries/Places/POIs/Platforms),
+/// runs the GraphData builders, and serializes the InitState.
 ///
-/// Unity loaduje wynik w sec, eliminuje 600s build na pełnej Polsce.
+/// Unity loads the result in seconds, eliminating the 600s build for all of Poland.
 /// </summary>
 public static class InitStateBuilder
 {
@@ -22,12 +22,12 @@ public static class InitStateBuilder
         BinaryFormat.LayerType.Places,
         BinaryFormat.LayerType.POIs,
         BinaryFormat.LayerType.Platforms,
-        BinaryFormat.LayerType.Coastlines // dla SyntheticWaterRenderer w Unity
+        BinaryFormat.LayerType.Coastlines // for Unity's SyntheticWaterRenderer
     };
 
     public static void BuildAndWrite(string mapBinPath, string countryCode)
     {
-        // Plug logger do Console (formap context)
+        // Plug the logger into Console (formap context)
         GraphLogger.Info ??= Console.WriteLine;
         GraphLogger.Warn ??= msg => Console.WriteLine($"WARN: {msg}");
         GraphLogger.Error ??= msg => Console.Error.WriteLine($"ERROR: {msg}");
@@ -68,8 +68,8 @@ public static class InitStateBuilder
                 stationNodes.Add(st.PathNodeId);
         state.BlockSections = GraphBlockSectionBuilder.Build(state.PathfindingGraph, stationNodes);
 
-        // Coastlines: zachowaj raw lines (bez triangulacji) dla Unity SyntheticWaterRenderer.
-        // Każda coastline = lista vertices (line, no closing).
+        // Coastlines: keep raw lines (no triangulation) for Unity's SyntheticWaterRenderer.
+        // Each coastline = a list of vertices (line, no closing).
         if (layers.TryGetValue(BinaryFormat.LayerType.Coastlines, out var coastlineFeatures))
         {
             state.Coastlines = new List<List<GraphPoint>>(coastlineFeatures.Count);
@@ -99,7 +99,7 @@ public static class InitStateBuilder
 
     /// <summary>
     /// Filter mainline railways — skip tram/narrow_gauge/light_rail/abandoned/sidings/yards/etc.
-    /// Mirror logic z Unity RailwayFeatureCollector.IsMainlineRail.
+    /// Mirrors the logic from Unity's RailwayFeatureCollector.IsMainlineRail.
     /// </summary>
     private static List<GraphMeshGeometry> FilterMainlineRailways(List<GraphMeshGeometry> features)
     {
@@ -128,8 +128,8 @@ public static class InitStateBuilder
     }
 
     /// <summary>
-    /// Czyta poland-v7.bin tile-by-tile, accumuluje logic layer features per type.
-    /// Skipuje non-logic layers (Buildings/Forests/Highways/etc.) via stream seek.
+    /// Reads poland-v7.bin tile-by-tile, accumulating logic-layer features per type.
+    /// Skips non-logic layers (Buildings/Forests/Highways/etc.) via stream seek.
     /// </summary>
     private static Dictionary<BinaryFormat.LayerType, List<GraphMeshGeometry>> ReadAllLogicLayers(string binPath)
     {
@@ -164,7 +164,7 @@ public static class InitStateBuilder
             if (processed % 500 == 0)
                 Console.WriteLine($"[InitStateBuilder]   tile {processed}/{totalTiles} (parsed={parsed}, skipped={skipped})");
 
-            int lod = 0; // LOD0 dla pełnej geometry
+            int lod = 0; // LOD0 for full geometry
             var lodInfo = entry.LODs[lod];
             if (lodInfo.LayerMask == 0 || lodInfo.CompressedSize <= 0) { skipped++; continue; }
 
@@ -210,7 +210,7 @@ public static class InitStateBuilder
         return layers;
     }
 
-    /// <summary>Stream-skip jeden feature bez parsing (mirror Unity SkipFeatureBytes).</summary>
+    /// <summary>Stream-skip a single feature without parsing (mirrors Unity's SkipFeatureBytes).</summary>
     private static void SkipFeatureBytes(BinaryReader r)
     {
         var s = r.BaseStream;

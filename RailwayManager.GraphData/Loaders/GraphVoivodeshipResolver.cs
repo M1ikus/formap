@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace RailwayManager.GraphData
 {
     /// <summary>
-    /// Klasyfikator pozycji → województwo na bazie AdminRegions.
-    /// Port z Unity Timetable.VoivodeshipResolver.
+    /// Classifies a position → voivodeship based on AdminRegions.
+    /// Ported from Unity's Timetable.VoivodeshipResolver.
     /// </summary>
     public class GraphVoivodeshipResolver
     {
