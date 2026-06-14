@@ -136,11 +136,27 @@ public static class InitStateBuilder
         using var fs = File.OpenRead(binPath);
         using var reader = new BinaryReader(fs);
 
-        // Magic + header v7
+        // Magic — dispatch v7 / v8
         byte[] magicBytes = reader.ReadBytes(8);
         string magic = System.Text.Encoding.ASCII.GetString(magicBytes);
+
+        if (magic == BinaryFormat.MagicV8)
+        {
+            fs.Position = 0;
+            var v8layers = BinaryFormatV8.ReadLogicLayersV8(fs, LogicLayers);
+            var result = new Dictionary<BinaryFormat.LayerType, List<GraphMeshGeometry>>();
+            foreach (var lt in LogicLayers) result[lt] = new List<GraphMeshGeometry>();
+            foreach (var kv in v8layers)
+                foreach (var m in kv.Value)
+                    result[kv.Key].Add(ConvertToGraph(m));
+            Console.WriteLine("[InitStateBuilder]   v8 format (FORMAP04), logic-layer read DONE:");
+            foreach (var kv in result)
+                Console.WriteLine($"[InitStateBuilder]     {kv.Key}: {kv.Value.Count} features");
+            return result;
+        }
+
         if (magic != BinaryFormat.MagicV7)
-            throw new InvalidDataException($"Expected v7 format, got: {magic}");
+            throw new InvalidDataException($"Expected v7 (FORMAP03) or v8 (FORMAP04) format, got: {magic}");
 
         BinaryFormat.ReadHeaderV7(reader, out float tileSize, out BBox globalBounds,
             out int tilesX, out int tilesY, out int totalTiles, out long indexTableOffset);

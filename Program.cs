@@ -6,13 +6,58 @@ class Program
 {
     static void Main(string[] args)
     {
+        if (args.Length >= 1 && args[0] == "--selftest")
+        {
+            FeatureCodecV8.SelfTest();
+            BinaryFormatV8.SelfTestFile();
+            return;
+        }
+
+        if (args.Length >= 2 && args[0] == "--gen-key")
+        {
+            string keyPath = args[1];
+            Signing.GenerateKeypair(keyPath);
+            Console.WriteLine($"[GEN-KEY] private key: {keyPath}.priv ({Signing.PrivateKeySize}-byte Ed25519 seed)");
+            Console.WriteLine($"[GEN-KEY] public key:  {keyPath}.pub ({Signing.PublicKeySize}-byte Ed25519 public key)");
+            return;
+        }
+
+        if (args.Length >= 3 && args[0] == "--verify-sig")
+        {
+            string file = args[1];
+            string pubPath = args[2];
+            if (!File.Exists(file)) { Console.WriteLine($"Error: File {file} not found."); Environment.Exit(1); }
+            if (!File.Exists(pubPath)) { Console.WriteLine($"Error: Public key {pubPath} not found."); Environment.Exit(1); }
+            byte[] pubKey = File.ReadAllBytes(pubPath);
+            bool pass = BinaryFormatV8.VerifySignatureV8(file, pubKey);
+            if (!pass) Environment.Exit(1);
+            return;
+        }
+
+        if (args.Length >= 2 && args[0] == "--read-v8")
+        {
+            BinaryFormatV8.SummarizeV8(args[1]);
+            return;
+        }
+
+        if (args.Length >= 3 && args[0] == "--verify-v8")
+        {
+            BinaryFormatV8.VerifyAgainstV7(args[1], args[2]);
+            return;
+        }
+
         if (args.Length < 1)
         {
-            Console.WriteLine("Usage: formap <input.osm.pbf> [output.bin] [--format v7] [--country PL] [--no-init-state] [--init-state-only <existing.bin>]");
-            Console.WriteLine("  --format v7           Write multi-LOD tiled format (default; only v7 is supported)");
+            Console.WriteLine("Usage: formap <input.osm.pbf> [output.bin] [--format v8|v7] [--country PL] [--no-init-state] [--init-state-only <existing.bin>] [--sign-key <priv>]");
+            Console.WriteLine("  --format v8           Write v8 (FORMAP04) tiled multi-LOD format — DEFAULT (lossless, ~44% smaller than v7)");
+            Console.WriteLine("  --format v7           Write legacy v7 (FORMAP03) format");
             Console.WriteLine("  --country <code>      ISO 3166-1 alpha-2 country code for init-state (default: PL)");
             Console.WriteLine("  --no-init-state       Skip building init-state-<country>.bin after conversion");
-            Console.WriteLine("  --init-state-only X   Skip OSM conversion, build init-state from existing X.bin");
+            Console.WriteLine("  --init-state-only X   Skip OSM conversion, build init-state from existing X.bin (v7 or v8)");
+            Console.WriteLine("  --sign-key <priv>     Ed25519-sign the v8 output (Pillar 2) using a 32-byte private seed");
+            Console.WriteLine();
+            Console.WriteLine("  --gen-key <path>              Generate an Ed25519 keypair → <path>.priv / <path>.pub, then exit");
+            Console.WriteLine("  --verify-sig <file> <pubkey>  Verify a signed v8 file's signature + per-block hashes, then exit");
             return;
         }
 
@@ -21,6 +66,10 @@ class Program
         string countryCode = "PL";
         bool buildInitState = true;
         string? initStateOnlyPath = null;
+        int formatVersion = 8; // v8 (FORMAP04) is the default output; --format v7 still available as legacy
+        bool verifyWrite = false;
+        int compressionType = 0; // 0 = LZ4-HC, 1 = Zstd
+        string? signKeyPath = null; // --sign-key <privpath> → Ed25519-sign the v8 file (Pillar 2)
 
         // Parse flags
         for (int i = 0; i < args.Length; i++)
@@ -28,8 +77,9 @@ class Program
             if (args[i] == "--format" && i + 1 < args.Length)
             {
                 string fmt = args[i + 1].ToLower();
-                if (fmt != "v7" && fmt != "7")
-                    Console.WriteLine("Only v7 output is supported; using v7.");
+                if (fmt == "v8" || fmt == "8") formatVersion = 8;
+                else if (fmt == "v7" || fmt == "7") formatVersion = 7;
+                else Console.WriteLine($"Unknown format '{fmt}'; using v{formatVersion}.");
             }
             else if (args[i] == "--country" && i + 1 < args.Length)
             {
@@ -39,9 +89,21 @@ class Program
             {
                 buildInitState = false;
             }
+            else if (args[i] == "--verify-write")
+            {
+                verifyWrite = true;
+            }
+            else if (args[i] == "--compress" && i + 1 < args.Length)
+            {
+                compressionType = args[i + 1].ToLower() == "zstd" ? 1 : 0;
+            }
             else if (args[i] == "--init-state-only" && i + 1 < args.Length)
             {
                 initStateOnlyPath = args[i + 1];
+            }
+            else if (args[i] == "--sign-key" && i + 1 < args.Length)
+            {
+                signKeyPath = args[i + 1];
             }
         }
 
@@ -73,10 +135,28 @@ class Program
         }
 
         Console.WriteLine($"Reading OSM data from: {inputFile}");
-        Console.WriteLine("Output format: v7");
+        Console.WriteLine($"Output format: v{formatVersion}");
 
         var converter = new OsmConverter();
-        converter.Convert(inputFile, outputFile, 7);
+        converter.VerifyAfterWriteV8 = verifyWrite;
+        converter.CompressionTypeV8 = compressionType;
+        if (signKeyPath != null)
+        {
+            if (!File.Exists(signKeyPath))
+            {
+                Console.WriteLine($"Error: signing key {signKeyPath} not found.");
+                Environment.Exit(1);
+            }
+            byte[] priv = File.ReadAllBytes(signKeyPath);
+            if (priv.Length != Signing.PrivateKeySize)
+            {
+                Console.WriteLine($"Error: signing key {signKeyPath} is {priv.Length} bytes (expected {Signing.PrivateKeySize}).");
+                Environment.Exit(1);
+            }
+            converter.SigningPrivateKeyV8 = priv;
+            Console.WriteLine($"[SIGN] Ed25519-signing v8 output with {signKeyPath}");
+        }
+        converter.Convert(inputFile, outputFile, formatVersion);
 
         Console.WriteLine($"Conversion complete. Output: {outputFile}");
 

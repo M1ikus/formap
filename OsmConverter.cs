@@ -110,37 +110,34 @@ public class OsmConverter
     /// </summary>
     private (List<MeshGeometry>? layer, object? lockObj) GetTargetLayer(TagsCollectionBase tags)
     {
-        if (IsBuilding(tags))
+        if (LayerClassifier.IsBuilding(tags))
             return (buildings, buildingsLock);
-        if (IsWaterFeature(tags))
+        if (LayerClassifier.IsWaterFeature(tags))
             return (waterFeatures, waterFeaturesLock);
-        if (IsForest(tags))
+        if (LayerClassifier.IsForest(tags))
             return (forests, forestsLock);
-        if (IsIndustrialArea(tags))
+        if (LayerClassifier.IsIndustrialArea(tags))
             return (industrialAreas, industrialAreasLock);
-        if (IsMilitaryArea(tags))
+        if (LayerClassifier.IsMilitaryArea(tags))
             return (militaryAreas, militaryAreasLock);
-        if (IsPlatform(tags))
+        if (LayerClassifier.IsPlatform(tags))
             return (platforms, platformsLock);
-        if (IsAdminBoundary(tags))
+        if (LayerClassifier.IsAdminBoundary(tags))
             return (adminBoundaries, adminBoundariesLock);
 
         return (null, null);
     }
 
-    /// <summary>
-    /// Checks if tags represent an administrative boundary (country or voivodeship).
-    /// Only admin_level 2 (country) and 4 (voivodeship in Poland) are kept — lower levels are too fine-grained.
-    /// </summary>
-    private static bool IsAdminBoundary(TagsCollectionBase tags)
-    {
-        if (tags == null) return false;
-        if (!tags.ContainsKey("boundary") || tags["boundary"] != "administrative") return false;
-        if (!tags.ContainsKey("admin_level")) return false;
+    /// <summary>When set, WriteBinaryV8 reads the file back and compares it bit-exact to the in-memory
+    /// features from the same run (definitive losslessness check, no cross-run non-determinism). Validation only.</summary>
+    public bool VerifyAfterWriteV8;
 
-        string level = tags["admin_level"];
-        return level == "2" || level == "4";
-    }
+    /// <summary>v8 block compression: 0 = LZ4-HC (fast decode, default), 1 = Zstd (smaller, slower decode).</summary>
+    public int CompressionTypeV8;
+
+    /// <summary>Optional 32-byte raw Ed25519 private seed (Pillar 2). When set, WriteBinaryV8 signs the v8
+    /// file: the index byte region is Ed25519-signed and a trailing 64-byte signature is appended. null = unsigned.</summary>
+    public byte[]? SigningPrivateKeyV8;
 
     public void Convert(string inputFile, string outputFile, int formatVersion = 7)
     {
@@ -237,11 +234,11 @@ public class OsmConverter
             else if (element is Relation relation)
             {
                 relationCount++;
-                if (IsMultipolygon(relation))
+                if (LayerClassifier.IsMultipolygon(relation))
                     bufferedRelations.Add((relation, nodes));
-                else if (IsWaterwayRelation(relation))
+                else if (LayerClassifier.IsWaterwayRelation(relation))
                     bufferedWaterwayRelations.Add((relation, nodes));
-                else if (IsRailwayRouteRelation(relation))
+                else if (LayerClassifier.IsRailwayRouteRelation(relation))
                     ProcessRailwayRouteRelation(relation);
             }
         }
@@ -614,8 +611,11 @@ public class OsmConverter
         phaseTimer = Stopwatch.StartNew();
         LogInfo("Writing binary output...");
 
-        // Write tiled format (v7 only)
-        WriteBinaryV7(outputFile);
+        // Write tiled format
+        if (formatVersion == 8)
+            WriteBinaryV8(outputFile);
+        else
+            WriteBinaryV7(outputFile);
 
         overallTimer?.Stop();
         LogSummary("COMPLETE");
@@ -656,18 +656,18 @@ public class OsmConverter
         // Determine feature type and buffer for parallel processing
         // Buffer polygon ways (triangulation is CPU-intensive) and highways for parallel processing
         // IMPORTANT: Only closed ways should be treated as polygons!
-        if (isClosedWay && (IsBuilding(tags) || IsWaterFeature(tags) || IsForest(tags) ||
-            IsIndustrialArea(tags) || IsMilitaryArea(tags) || IsPlatform(tags)))
+        if (isClosedWay && (LayerClassifier.IsBuilding(tags) || LayerClassifier.IsWaterFeature(tags) || LayerClassifier.IsForest(tags) ||
+            LayerClassifier.IsIndustrialArea(tags) || LayerClassifier.IsMilitaryArea(tags) || LayerClassifier.IsPlatform(tags)))
         {
             // Buffer polygon ways for parallel processing (triangulation is slow)
             bufferedPolygonWays.Add((way, coords, tags));
         }
-        else if (IsHighway(tags))
+        else if (LayerClassifier.IsHighway(tags))
         {
             // Buffer highways for parallel processing
             bufferedHighwayWays.Add((way, coords, tags));
         }
-        else if (IsWaterwayLine(tags))
+        else if (LayerClassifier.IsWaterwayLine(tags))
         {
             // Buffer waterways (rivers, streams, canals) for parallel processing
             bufferedWaterwayWays.Add((way, coords, tags));
@@ -681,8 +681,8 @@ public class OsmConverter
         }
         // Coastlines disabled — not used (gulfs/lagoons/Baltic are covered by natural=bay/place=sea
         // multipolygons in the Water layer + CountryOutsideMesh for areas outside PL).
-        // else if (IsCoastline(tags)) { bufferedCoastlineWays.Add((way, coords, tags)); }
-        else if (IsRailway(tags))
+        // else if (LayerClassifier.IsCoastline(tags)) { bufferedCoastlineWays.Add((way, coords, tags)); }
+        else if (LayerClassifier.IsRailway(tags))
         {
             // Buffer and count unique node usages for junction detection
             bufferedRailways.Add((way, coords, tags));
@@ -699,199 +699,6 @@ public class OsmConverter
         }
     }
     
-    private static bool IsBuilding(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("building") || tags.ContainsKey("building:part");
-    }
-    
-    private static bool IsWaterFeature(TagsCollectionBase tags)
-    {
-        // natural=water polygon (lake, pond, etc.)
-        // natural=bay — sea bays (Gulf of Gdańsk, lagoons such as the Vistula Lagoon)
-        if (tags.ContainsKey("natural"))
-        {
-            string naturalType = tags["natural"];
-            if (naturalType == "water" || naturalType == "bay")
-                return true;
-        }
-
-        // place=sea — seas as multipolygon relations (the Baltic, if present in the PBF)
-        if (tags.ContainsKey("place") && tags["place"] == "sea")
-            return true;
-
-        // water=* tag indicates a water body polygon (lagoon, lake, pond, etc.)
-        if (tags.ContainsKey("water"))
-            return true;
-
-        // landuse=reservoir is a polygon
-        if (tags.ContainsKey("landuse") && tags["landuse"] == "reservoir")
-            return true;
-
-        // For waterway tag, only polygon types are valid for triangulation
-        // riverbank and dock are polygons, others (river, stream, canal, etc.) are lines
-        if (tags.ContainsKey("waterway"))
-        {
-            string waterwayType = tags["waterway"];
-            // Only these waterway types are polygons:
-            return waterwayType == "riverbank" ||
-                   waterwayType == "dock" ||
-                   waterwayType == "boatyard" ||
-                   waterwayType == "dam";
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Checks if tags represent a waterway line (river, stream, canal, etc.)
-    /// These are rendered as lines with width, not filled polygons
-    /// </summary>
-    private static bool IsWaterwayLine(TagsCollectionBase tags)
-    {
-        if (!tags.ContainsKey("waterway"))
-            return false;
-
-        string waterwayType = tags["waterway"];
-        // Line-type waterways (not polygons)
-        return waterwayType == "river" ||
-               waterwayType == "stream" ||
-               waterwayType == "canal" ||
-               waterwayType == "drain" ||
-               waterwayType == "ditch" ||
-               waterwayType == "brook";
-    }
-
-    private static bool IsIndustrialArea(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("landuse") && 
-               (tags["landuse"] == "industrial" || 
-                tags["landuse"] == "commercial" ||
-                tags["landuse"] == "retail" ||
-                tags["landuse"] == "warehouse") ||
-               tags.ContainsKey("amenity") && tags["amenity"] == "industrial";
-    }
-    
-    private static bool IsMilitaryArea(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("military") ||
-               tags.ContainsKey("landuse") && tags["landuse"] == "military" ||
-               tags.ContainsKey("landuse") && tags["landuse"] == "military:airfield";
-    }
-    
-    private static bool IsPlatform(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("public_transport") && tags["public_transport"] == "platform" ||
-               tags.ContainsKey("railway") && tags["railway"] == "platform" ||
-               tags.ContainsKey("highway") && tags["highway"] == "platform";
-    }
-    
-    private static bool IsHighway(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("highway");
-    }
-
-    /// <summary>
-    /// natural=coastline — OSM sea shoreline. A way (line, not a polygon).
-    /// Used by Unity's SyntheticWaterRenderer to generate meshes for the Baltic and the Vistula Lagoon
-    /// (the Poland PBF does not contain natural=water for the Baltic — the relation is too large).
-    /// </summary>
-    private static bool IsCoastline(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("natural") && tags["natural"] == "coastline";
-    }
-    
-    private static bool IsRailway(TagsCollectionBase tags)
-    {
-        // Exclude ferry routes.
-        if (tags.ContainsKey("route") && tags["route"] == "ferry") return false;
-        if (tags.ContainsKey("ferry")) return false;
-
-        if (!tags.ContainsKey("railway"))
-            return false;
-
-        string railwayType = tags["railway"];
-
-        // Skip projected/planned/construction — not playable.
-        if (railwayType == "construction" || railwayType == "proposed" || railwayType == "planned")
-            return false;
-
-        // Disused/abandoned: accept mainline rail (Unity renders it gray),
-        // SKIP disused tram/narrow_gauge/subway/light_rail/monorail (the user does not want to see unused trams/narrow-gauge lines).
-        if (railwayType == "disused" || railwayType == "abandoned")
-        {
-            string? originalType = null;
-            if (tags.ContainsKey("disused:railway")) originalType = tags["disused:railway"];
-            else if (tags.ContainsKey("abandoned:railway")) originalType = tags["abandoned:railway"];
-            if (originalType == "tram" || originalType == "subway" || originalType == "monorail"
-                || originalType == "narrow_gauge" || originalType == "light_rail")
-                return false;
-            return true; // disused mainline rail → accept, rendered gray
-        }
-
-        // ACTIVE tram/subway/monorail/narrow_gauge/light_rail — included in the bin.
-        // Unity's MapRenderer hides them at LOD>2 (transitOnly branch).
-
-        // Skip POI types (station/halt/signal/platform rendered via the POI layer).
-        return railwayType != "platform" &&
-               railwayType != "station" &&
-               railwayType != "halt" &&
-               railwayType != "signal";
-    }
-    
-    private static bool IsForest(TagsCollectionBase tags)
-    {
-        return tags.ContainsKey("landuse") && tags["landuse"] == "forest" ||
-               tags.ContainsKey("natural") && tags["natural"] == "wood";
-    }
-    
-    private static bool IsMultipolygon(Relation relation)
-    {
-        if (relation.Tags == null)
-            return false;
-
-        // Standard multipolygon (buildings, water, forests, etc.)
-        if (relation.Tags.ContainsKey("type") && relation.Tags["type"] == "multipolygon")
-            return true;
-
-        // Administrative boundary relations (country, voivodeship) — also treated as multipolygons
-        // so ProcessMultipolygon can build closed rings from outer/inner ways.
-        // OSM relation for a voivodeship has type=boundary + boundary=administrative + admin_level=2|4.
-        if (relation.Tags.ContainsKey("type") && relation.Tags["type"] == "boundary"
-            && IsAdminBoundary(relation.Tags))
-            return true;
-
-        return false;
-    }
-
-    private static bool IsWaterwayRelation(Relation relation)
-    {
-        if (relation.Tags == null)
-            return false;
-
-        // Check if relation has waterway tag (river, stream, canal, etc.)
-        // Relations can represent multi-segment waterways (e.g., long rivers)
-        return relation.Tags.ContainsKey("waterway") &&
-               (relation.Tags["waterway"] == "river" ||
-                relation.Tags["waterway"] == "stream" ||
-                relation.Tags["waterway"] == "canal" ||
-                relation.Tags["waterway"] == "drain" ||
-                relation.Tags["waterway"] == "ditch" ||
-                relation.Tags["waterway"] == "brook");
-    }
-
-    /// <summary>
-    /// Detect railway route relations.
-    /// OSM `type=route` + `route=tracks|railway|train` with a `ref` tag (the line number).
-    /// </summary>
-    private static bool IsRailwayRouteRelation(Relation relation)
-    {
-        if (relation.Tags == null) return false;
-        if (!relation.Tags.ContainsKey("type") || relation.Tags["type"] != "route") return false;
-        if (!relation.Tags.ContainsKey("route")) return false;
-        var route = relation.Tags["route"];
-        return route == "tracks" || route == "railway" || route == "train";
-    }
-
     /// <summary>
     /// Propagate `ref` from a railway route relation onto its member ways.
     /// Stores the mapping way_id → set of refs in `_wayIdToLineRefs`. A multi-ref ("9;204")
@@ -933,7 +740,7 @@ public class OsmConverter
         if (relation.Members == null || relation.Tags == null)
             return;
 
-        bool isAdmin = IsAdminBoundary(relation.Tags);
+        bool isAdmin = LayerClassifier.IsAdminBoundary(relation.Tags);
 
         // Collect outer, inner, and unassigned ways
         var outerWays = new List<List<Vector2>>();
@@ -992,7 +799,7 @@ public class OsmConverter
         // may be cropped at the country border (Gulf of Gdańsk, Vistula Lagoon, Baltic on the RU side).
         // The auto-close gap between the first/last vertex creates an "artificial" closure along the PL
         // border — acceptable, because the Baltic/gulf is covered by CountryOutsideMesh outside PL anyway.
-        bool isWaterMP = IsWaterFeature(tags);
+        bool isWaterMP = LayerClassifier.IsWaterFeature(tags);
         float gapOverride = isWaterMP ? 200000f : 30f;
         var closedOuterRings = BuildClosedRings(outerWays, gapOverride);
         var closedInnerRings = BuildClosedRings(innerWays, gapOverride);
@@ -1001,7 +808,7 @@ public class OsmConverter
         // Auto-classify unassigned rings based on area and containment
         if (closedUnassignedRings.Count > 0)
         {
-            ClassifyRings(closedUnassignedRings, closedOuterRings, closedInnerRings);
+            PolygonUtils.ClassifyRings(closedUnassignedRings, closedOuterRings, closedInnerRings);
         }
 
         if (closedOuterRings.Count == 0)
@@ -1052,7 +859,7 @@ public class OsmConverter
                 var holesForThisRing = new List<List<Vector2>>();
                 foreach (var innerRing in closedInnerRings)
                 {
-                    if (IsRingInsideRing(innerRing, outerRing))
+                    if (PolygonUtils.IsRingInsideRing(innerRing, outerRing))
                     {
                         holesForThisRing.Add(innerRing);
                     }
@@ -1240,157 +1047,6 @@ public class OsmConverter
     }
 
     /// <summary>
-    /// Checks if inner ring is inside outer ring using multiple test points for robustness.
-    /// Tests centroid and several vertices - majority vote determines result.
-    /// </summary>
-    private static bool IsRingInsideRing(List<Vector2> inner, List<Vector2> outer)
-    {
-        if (inner.Count == 0 || outer.Count < 3)
-            return false;
-
-        // Calculate centroid of inner ring
-        float cx = 0, cy = 0;
-        foreach (var p in inner)
-        {
-            cx += p.X;
-            cy += p.Y;
-        }
-        cx /= inner.Count;
-        cy /= inner.Count;
-        var centroid = new Vector2(cx, cy);
-
-        // Test multiple points: centroid + evenly distributed vertices
-        int insideCount = 0;
-        int totalTests = 0;
-
-        // Test centroid first (most reliable)
-        if (IsPointInPolygon(centroid, outer))
-            insideCount++;
-        totalTests++;
-
-        // Test several vertices distributed around the ring
-        int step = Math.Max(1, inner.Count / 5); // Test ~5 vertices
-        for (int i = 0; i < inner.Count; i += step)
-        {
-            if (IsPointInPolygon(inner[i], outer))
-                insideCount++;
-            totalTests++;
-        }
-
-        // Majority vote - more than half of test points must be inside
-        return insideCount > totalTests / 2;
-    }
-
-    private static bool IsPointInPolygon(Vector2 point, List<Vector2> polygon)
-    {
-        bool inside = false;
-        int j = polygon.Count - 1;
-
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            if ((polygon[i].Y > point.Y) != (polygon[j].Y > point.Y) &&
-                point.X < (polygon[j].X - polygon[i].X) * (point.Y - polygon[i].Y) / (polygon[j].Y - polygon[i].Y) + polygon[i].X)
-            {
-                inside = !inside;
-            }
-            j = i;
-        }
-
-        return inside;
-    }
-
-    /// <summary>
-    /// Classifies unassigned rings as outer or inner based on:
-    /// 1. Signed area (positive = CCW = outer, negative = CW = inner)
-    /// 2. Containment (ring inside another = inner)
-    /// </summary>
-    private static void ClassifyRings(List<List<Vector2>> unassigned, List<List<Vector2>> outers, List<List<Vector2>> inners)
-    {
-        if (unassigned.Count == 0)
-            return;
-
-        // Calculate signed area for each ring
-        var ringAreas = unassigned.Select(ring => (ring, area: CalculateSignedArea(ring))).ToList();
-
-        // Sort by absolute area (largest first)
-        ringAreas.Sort((a, b) => Math.Abs(b.area).CompareTo(Math.Abs(a.area)));
-
-        foreach (var (ring, area) in ringAreas)
-        {
-            // Check if this ring is inside any existing outer ring
-            bool isInsideOuter = false;
-            foreach (var outer in outers)
-            {
-                if (IsRingInsideRing(ring, outer))
-                {
-                    isInsideOuter = true;
-                    break;
-                }
-            }
-
-            if (isInsideOuter)
-            {
-                // Ring is inside an outer - it's a hole (inner)
-                inners.Add(ring);
-            }
-            else
-            {
-                // Ring is not inside any outer
-                // Check signed area: positive (CCW) = outer, negative (CW) = inner
-                // But if no outers exist yet, this should be outer regardless of winding
-                if (outers.Count == 0 || area > 0)
-                {
-                    outers.Add(ring);
-                }
-                else
-                {
-                    // Negative area and we have outers - check if it contains any outer
-                    bool containsOuter = false;
-                    foreach (var outer in outers)
-                    {
-                        if (IsRingInsideRing(outer, ring))
-                        {
-                            containsOuter = true;
-                            break;
-                        }
-                    }
-
-                    if (containsOuter)
-                    {
-                        // This ring contains an outer, so it's actually an outer itself
-                        // (outer with a hole that is also an outer)
-                        outers.Add(ring);
-                    }
-                    else
-                    {
-                        // Standalone ring with CW winding - treat as outer but reverse
-                        outers.Add(ring);
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Calculates signed area of a polygon.
-    /// Positive = counter-clockwise (outer), Negative = clockwise (inner/hole)
-    /// </summary>
-    private static float CalculateSignedArea(List<Vector2> polygon)
-    {
-        if (polygon.Count < 3)
-            return 0;
-
-        float area = 0;
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            var p1 = polygon[i];
-            var p2 = polygon[(i + 1) % polygon.Count];
-            area += (p2.X - p1.X) * (p2.Y + p1.Y);
-        }
-        return -area * 0.5f; // Negative because Y is often inverted
-    }
-
-    /// <summary>
     /// Creates a mesh from a single outer ring with optional holes
     /// </summary>
     private MeshGeometry? CreateSinglePolygonMesh(List<Vector2> outerRing, List<List<Vector2>> holes, TagsCollectionBase tags)
@@ -1510,7 +1166,7 @@ public class OsmConverter
             var tess = new Tess();
 
             // Ensure outer is CCW (counter-clockwise) - LibTess expects this for outer contours
-            if (!IsPolygonCCW(outerPoly))
+            if (!PolygonUtils.IsPolygonCCW(outerPoly))
                 outerPoly.Reverse();
 
             // Add outer contour
@@ -1549,7 +1205,7 @@ public class OsmConverter
                     if (holePoly.Count < 3) continue;
 
                     // Ensure hole is CW (clockwise) - opposite to outer
-                    if (IsPolygonCCW(holePoly))
+                    if (PolygonUtils.IsPolygonCCW(holePoly))
                         holePoly.Reverse();
 
                     var holeContour = new ContourVertex[holePoly.Count];
@@ -1626,23 +1282,6 @@ public class OsmConverter
         libTessFailures++;
         var fallbackIndices = Triangulation.Triangulate(outerPoly);
         return (outerPoly, fallbackIndices);
-    }
-
-    /// <summary>
-    /// Checks if polygon is counter-clockwise (positive signed area)
-    /// </summary>
-    private static bool IsPolygonCCW(List<Vector2> polygon)
-    {
-        if (polygon.Count < 3) return true;
-
-        float sum = 0;
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            var p1 = polygon[i];
-            var p2 = polygon[(i + 1) % polygon.Count];
-            sum += (p2.X - p1.X) * (p2.Y + p1.Y);
-        }
-        return sum < 0; // Negative sum = CCW in screen coordinates (Y up)
     }
 
     /// <summary>
@@ -1821,21 +1460,6 @@ public class OsmConverter
         }
 
         return result;
-    }
-
-    private static float CalculatePolygonArea(List<Vector2> polygon)
-    {
-        if (polygon.Count < 3)
-            return 0;
-
-        float area = 0;
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            var p1 = polygon[i];
-            var p2 = polygon[(i + 1) % polygon.Count];
-            area += p1.X * p2.Y - p2.X * p1.Y;
-        }
-        return area * 0.5f;
     }
 
     private void ProcessNode(Node node)
@@ -2437,11 +2061,11 @@ public class OsmConverter
                 var lodFeatures = lod switch
                 {
                     0 => tile.Features,                          // LOD0 (<1000): everything
-                    1 => CreateLODLevel1(tile.Features),         // LOD1 (1000-2000): residential+, all buildings
-                    2 => CreateLODLevel2(tile.Features),         // LOD2 (2000-4000): residential+, big buildings
-                    3 => CreateLODLevel3(tile.Features),         // LOD3 (4000-8000): motorway-tertiary, no buildings
-                    4 => CreateLODLevel4(tile.Features),         // LOD4 (8000-16000): motorway/trunk/primary
-                    5 => CreateLODLevel5(tile.Features),         // LOD5 (>16000): no roads
+                    1 => LodFilter.CreateLODLevel1(tile.Features),         // LOD1 (1000-2000): residential+, all buildings
+                    2 => LodFilter.CreateLODLevel2(tile.Features),         // LOD2 (2000-4000): residential+, big buildings
+                    3 => LodFilter.CreateLODLevel3(tile.Features),         // LOD3 (4000-8000): motorway-tertiary, no buildings
+                    4 => LodFilter.CreateLODLevel4(tile.Features),         // LOD4 (8000-16000): motorway/trunk/primary
+                    5 => LodFilter.CreateLODLevel5(tile.Features),         // LOD5 (>16000): no roads
                     _ => tile.Features
                 };
 
@@ -2521,203 +2145,107 @@ public class OsmConverter
         LogInfo($"  Non-empty tiles: {nonEmptyTiles:N0}");
     }
 
-    // --- 6-level LOD system ---
-
-    /// <summary> LOD1 (1000-2000): residential+ roads, all buildings, all POIs. No paths/footways/service. </summary>
-    private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel1(
-        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> full)
-    {
-        var result = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
-        foreach (var (lt, features) in full)
-        {
-            if (features.Count == 0) continue;
-            switch (lt)
-            {
-                case BinaryFormat.LayerType.Highways:
-                    var roads = features.Where(g => IsResidentialOrAbove(g)).ToList();
-                    if (roads.Count > 0) result[lt] = roads;
-                    break;
-                case BinaryFormat.LayerType.Military:
-                    break; // skip
-                default:
-                    result[lt] = features;
-                    break;
-            }
-        }
-        return result;
-    }
-
-    /// <summary> LOD2 (2000-4000): residential+ roads, large buildings (>100m²), all POIs. No waterways, military. </summary>
-    private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel2(
-        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> full)
-    {
-        var result = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
-        foreach (var (lt, features) in full)
-        {
-            if (features.Count == 0) continue;
-            switch (lt)
-            {
-                case BinaryFormat.LayerType.Highways:
-                    var roads = features.Where(g => IsResidentialOrAbove(g)).ToList();
-                    if (roads.Count > 0) result[lt] = roads;
-                    break;
-                case BinaryFormat.LayerType.Buildings:
-                    var big = features.Where(g => MathF.Abs(CalculatePolygonArea(g.Vertices)) >= 100f).ToList();
-                    if (big.Count > 0) result[lt] = big;
-                    break;
-                case BinaryFormat.LayerType.Waterways:
-                case BinaryFormat.LayerType.Military:
-                case BinaryFormat.LayerType.Coastlines: // LOD0/1 only — used once at init by SyntheticWaterRenderer
-                    break; // skip
-                default:
-                    result[lt] = features;
-                    break;
-            }
-        }
-        return result;
-    }
-
-    /// <summary> LOD3 (4000-8000): motorway-tertiary, railways, water, forests, waterways. City/town/village. No buildings. </summary>
-    private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel3(
-        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> full)
-    {
-        var result = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
-        foreach (var (lt, features) in full)
-        {
-            if (features.Count == 0) continue;
-            switch (lt)
-            {
-                case BinaryFormat.LayerType.Highways:
-                    var roads = features.Where(g => IsMainRoad(g)).ToList();
-                    if (roads.Count > 0) result[lt] = roads;
-                    break;
-                case BinaryFormat.LayerType.Places:
-                    var placesCtv = features.Where(g => IsCityTownOrVillage(g)).ToList();
-                    if (placesCtv.Count > 0) result[lt] = placesCtv;
-                    break;
-                case BinaryFormat.LayerType.POIs:
-                case BinaryFormat.LayerType.Railways:
-                case BinaryFormat.LayerType.Water:
-                case BinaryFormat.LayerType.Forests:
-                case BinaryFormat.LayerType.Waterways:
-                case BinaryFormat.LayerType.AdminBoundaries:
-                    result[lt] = features;
-                    break;
-                // Skip: Buildings, Industrial, Military, Platforms
-            }
-        }
-        return result;
-    }
-
-    /// <summary> LOD4 (8000-16000): motorway/trunk/primary only, railways, water, forests. City/town. </summary>
-    private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel4(
-        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> full)
-    {
-        var result = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
-        foreach (var (lt, features) in full)
-        {
-            if (features.Count == 0) continue;
-            switch (lt)
-            {
-                case BinaryFormat.LayerType.Highways:
-                    var roads = features.Where(g => IsMajorRoad(g)).ToList();
-                    if (roads.Count > 0) result[lt] = roads;
-                    break;
-                case BinaryFormat.LayerType.Places:
-                    var placesCt = features.Where(g => IsCityOrTown(g)).ToList();
-                    if (placesCt.Count > 0) result[lt] = placesCt;
-                    break;
-                case BinaryFormat.LayerType.POIs:
-                case BinaryFormat.LayerType.Railways:
-                case BinaryFormat.LayerType.Water:
-                case BinaryFormat.LayerType.Forests:
-                case BinaryFormat.LayerType.AdminBoundaries:
-                    result[lt] = features;
-                    break;
-                // Skip everything else
-            }
-        }
-        return result;
-    }
-
-    /// <summary> LOD5 (>16000): NO roads. Railways, water, forests. City/town only. </summary>
-    private Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> CreateLODLevel5(
-        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> full)
-    {
-        var result = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
-        foreach (var (lt, features) in full)
-        {
-            if (features.Count == 0) continue;
-            switch (lt)
-            {
-                case BinaryFormat.LayerType.Places:
-                    var placesCt = features.Where(g => IsCityOrTown(g)).ToList();
-                    if (placesCt.Count > 0) result[lt] = placesCt;
-                    break;
-                case BinaryFormat.LayerType.POIs:
-                case BinaryFormat.LayerType.Railways:
-                case BinaryFormat.LayerType.Water:
-                case BinaryFormat.LayerType.Forests:
-                case BinaryFormat.LayerType.AdminBoundaries:
-                    result[lt] = features;
-                    break;
-                // Skip: Highways, Buildings, Industrial, Military, Platforms, Waterways
-            }
-        }
-        return result;
-    }
-
-    /// <summary>True for city/town/village place tags on Places layer.</summary>
-    private static bool IsCityTownOrVillage(MeshGeometry geom)
-    {
-        if (!geom.Metadata.TryGetValue("place", out var pt)) return false;
-        return pt is "city" or "town" or "village";
-    }
-
-    /// <summary>True for city/town place tags (no village) — used at far zoom levels.</summary>
-    private static bool IsCityOrTown(MeshGeometry geom)
-    {
-        if (!geom.Metadata.TryGetValue("place", out var pt)) return false;
-        return pt is "city" or "town";
-    }
-
-    // --- Road classification helpers ---
-
-    /// <summary> Residential and above (no footway, path, service, track, cycleway) </summary>
-    private static bool IsResidentialOrAbove(MeshGeometry geom)
-    {
-        if (!geom.Metadata.TryGetValue("highway", out var hwType) || string.IsNullOrEmpty(hwType))
-            return false;
-        return hwType is "motorway" or "motorway_link" or "trunk" or "trunk_link"
-            or "primary" or "primary_link" or "secondary" or "secondary_link"
-            or "tertiary" or "tertiary_link" or "residential" or "living_street"
-            or "unclassified" or "road";
-    }
-
-    /// <summary> Major road: motorway/trunk/primary (for LOD4) </summary>
-    private static bool IsMajorRoad(MeshGeometry geom)
-    {
-        if (!geom.Metadata.TryGetValue("highway", out var hwType) || string.IsNullOrEmpty(hwType))
-            return false;
-        return hwType is "motorway" or "motorway_link" or "trunk" or "trunk_link"
-            or "primary" or "primary_link";
-    }
-
     /// <summary>
-    /// LOD1: only motorway, trunk, primary (motorways, expressways, main urban roads).
-    /// Returns false for everything else including features without highway metadata.
+    /// Writes v8 (FORMAP04): the same tiled multi-LOD data as v7, losslessly re-encoded
+    /// (uint16 indices + per-feature int32 fallback, presence bitfield + varint counts, one global
+    /// metadata string table, LZ4-HC). bbox kept; coordinate precision untouched. Grid construction
+    /// mirrors WriteBinaryV7 — to be de-duplicated when OsmConverter is split (see docs/format-v8.md).
     /// </summary>
-    private static bool IsMainRoad(MeshGeometry geom)
+    private void WriteBinaryV8(string outputFile)
     {
-        if (!geom.Metadata.TryGetValue("highway", out var hwType))
-            return false;
+        phaseTimer = Stopwatch.StartNew();
+        LogInfo("Building tile grid for v8 (multi-LOD)...");
 
-        if (string.IsNullOrEmpty(hwType))
-            return false;
+        var globalBounds = BBox.Empty;
+        foreach (var geom in highways) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in railways) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in buildings) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in waterFeatures) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in waterways) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in industrialAreas) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in militaryAreas) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in platforms) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in forests) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in pois) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in adminBoundaries) globalBounds.Expand(geom.BoundingBox);
+        foreach (var geom in places) globalBounds.Expand(geom.BoundingBox);
 
-        return hwType is "motorway" or "motorway_link" or "trunk" or "trunk_link"
-            or "primary" or "primary_link" or "secondary" or "secondary_link"
-            or "tertiary" or "tertiary_link";
+        var grid = new TileGrid();
+        grid.Initialize(globalBounds);
+
+        LogInfo("Distributing features to tiles...");
+        foreach (var geom in highways) grid.AddFeature(BinaryFormat.LayerType.Highways, geom);
+        foreach (var geom in railways) grid.AddFeature(BinaryFormat.LayerType.Railways, geom);
+        foreach (var geom in buildings) grid.AddFeature(BinaryFormat.LayerType.Buildings, geom);
+        foreach (var geom in waterFeatures) grid.AddFeature(BinaryFormat.LayerType.Water, geom);
+        foreach (var geom in waterways) grid.AddFeature(BinaryFormat.LayerType.Waterways, geom);
+        foreach (var geom in industrialAreas) grid.AddFeature(BinaryFormat.LayerType.Industrial, geom);
+        foreach (var geom in militaryAreas) grid.AddFeature(BinaryFormat.LayerType.Military, geom);
+        foreach (var geom in platforms) grid.AddFeature(BinaryFormat.LayerType.Platforms, geom);
+        foreach (var geom in forests) grid.AddFeature(BinaryFormat.LayerType.Forests, geom);
+        foreach (var geom in pois) grid.AddFeature(BinaryFormat.LayerType.POIs, geom);
+        foreach (var geom in adminBoundaries) grid.AddFeature(BinaryFormat.LayerType.AdminBoundaries, geom);
+        foreach (var geom in places) grid.AddFeature(BinaryFormat.LayerType.Places, geom);
+        foreach (var geom in coastlines) grid.AddFeature(BinaryFormat.LayerType.Coastlines, geom);
+
+        grid.PrintStatistics();
+
+        LogInfo("Writing v8 format (FORMAP04, LZ4-HC)...");
+        var tiles = grid.Tiles.Values.OrderBy(t => t.TileID).ToList();
+
+        Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> LodFilter(TileGrid.TileInfo tile, int lod) => lod switch
+        {
+            0 => tile.Features,
+            1 => formap.LodFilter.CreateLODLevel1(tile.Features),
+            2 => formap.LodFilter.CreateLODLevel2(tile.Features),
+            3 => formap.LodFilter.CreateLODLevel3(tile.Features),
+            4 => formap.LodFilter.CreateLODLevel4(tile.Features),
+            5 => formap.LodFilter.CreateLODLevel5(tile.Features),
+            _ => tile.Features
+        };
+
+        long fileBytes;
+        // ReadWrite: signing reads the index region back to hash it (Pillar 2); the v8 writer already seeks to
+        // rewrite the header. Harmless for the unsigned path.
+        using (var fileStream = new FileStream(outputFile, FileMode.Create, FileAccess.ReadWrite, FileShare.None,
+            bufferSize: 1024 * 1024, useAsync: false))
+        {
+            BinaryFormatV8.WriteV8(fileStream, globalBounds, grid.TilesX, grid.TilesY,
+                BinaryFormat.LayerCount, BinaryFormat.LODCount, tiles, LodFilter, CompressionTypeV8, SigningPrivateKeyV8);
+            fileBytes = fileStream.Length;
+        }
+
+        LogInfo("v8 format write complete!");
+        LogInfo($"  File size: {fileBytes / (1024.0 * 1024.0):F2} MB");
+        LogInfo($"  Total tiles: {tiles.Count:N0}");
+
+        if (VerifyAfterWriteV8)
+        {
+            LogInfo("Verifying v8 round-trip (same-run, bit-exact incl. segmentIds)...");
+            using var rfs = File.OpenRead(outputFile);
+            var decoded = BinaryFormatV8.ReadV8(rfs);
+            long compared = 0, fails = 0;
+            for (int i = 0; i < tiles.Count && i < decoded.Count; i++)
+                for (int lod = 0; lod < BinaryFormat.LODCount; lod++)
+                {
+                    var exp = LodFilter(tiles[i], lod);
+                    var got = decoded[i].Lods[lod];
+                    foreach (var (lt, list) in exp)
+                    {
+                        if (list.Count == 0) continue;
+                        if (!got.TryGetValue(lt, out var glist) || glist.Count != list.Count) { fails++; continue; }
+                        for (int f = 0; f < list.Count; f++)
+                        {
+                            var d = FeatureCodecV8.Compare(list[f], glist[f]);
+                            compared++;
+                            if (d != null) { fails++; if (fails <= 8) LogError($"  v8 mismatch tile{i} lod{lod} {lt} feat{f}: {d}"); }
+                        }
+                    }
+                }
+            LogInfo(fails == 0
+                ? $"  v8 round-trip BIT-EXACT: {compared:N0} features compared, 0 mismatches"
+                : $"  v8 round-trip FAILED: {fails:N0} mismatches");
+        }
     }
 
 }

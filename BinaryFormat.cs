@@ -50,6 +50,7 @@ namespace formap;
 public static class BinaryFormat
 {
     public const string MagicV7 = "FORMAP03"; // v7+: LayerCount=13 (Coastlines added on 2026-04-23, breaking change)
+    public const string MagicV8 = "FORMAP04"; // v8: header carries LayerCount + LODCount explicitly (no compile-time assumptions)
     public const int LODCount = 6;
 
     public enum LayerType : int
@@ -140,6 +141,71 @@ public static class BinaryFormat
         totalTiles = reader.ReadInt32();
         indexTableOffset = reader.ReadInt64();
         reader.ReadBytes(72);
+    }
+
+    // --- Format v8 (FORMAP04) ---
+
+    /// <summary>
+    /// v8 header (128 bytes). Same fields as v7 plus explicit <paramref name="layerCount"/> and
+    /// <paramref name="lodCount"/>, so every reader reads them dynamically instead of assuming
+    /// compile-time constants. This permanently removes the v7 layer-count desync trap
+    /// (a 12- vs 13-layer file silently misaligning a reader that hard-codes the count).
+    /// Layout: magic(8) version(4) tileSize(4) bounds(16) tilesX(4) tilesY(4) totalTiles(4)
+    ///         indexTableOffset(8) layerCount(4) lodCount(4) compressionType(4) signatureLength(4)
+    ///         reserved(60) = 128 bytes.
+    /// compressionType: 0 = LZ4-HC (K4os pickle), 1 = Zstd.
+    /// signatureLength: 0 = unsigned, 64 = Ed25519-signed (trailing 64-byte signature at end of file).
+    /// </summary>
+    public static void WriteHeaderV8(BinaryWriter writer, BBox globalBounds, int tilesX, int tilesY,
+        int totalTiles, long indexTableOffset, int layerCount, int lodCount, int compressionType,
+        int signatureLength)
+    {
+        writer.Write(System.Text.Encoding.ASCII.GetBytes(MagicV8));
+        writer.Write(8); // Version
+        writer.Write(TileGrid.TILE_SIZE);
+        writer.Write(globalBounds.MinX);
+        writer.Write(globalBounds.MinY);
+        writer.Write(globalBounds.MaxX);
+        writer.Write(globalBounds.MaxY);
+        writer.Write(tilesX);
+        writer.Write(tilesY);
+        writer.Write(totalTiles);
+        writer.Write(indexTableOffset);
+        writer.Write(layerCount);       // NEW in v8
+        writer.Write(lodCount);         // NEW in v8
+        writer.Write(compressionType);  // NEW in v8: 0=LZ4-HC, 1=Zstd
+        writer.Write(signatureLength);  // NEW in v8 (Pillar 2): 0=unsigned, 64=Ed25519-signed
+        writer.Write(new byte[60]);     // Reserved — total 128 bytes
+    }
+
+    /// <summary>
+    /// Reads a v8 header. Magic is consumed by the caller; this starts at the version field.
+    /// </summary>
+    public static void ReadHeaderV8(BinaryReader reader, out float tileSize, out BBox globalBounds,
+        out int tilesX, out int tilesY, out int totalTiles, out long indexTableOffset,
+        out int layerCount, out int lodCount, out int compressionType, out int signatureLength)
+    {
+        int version = reader.ReadInt32();
+        if (version != 8)
+            throw new InvalidDataException($"Expected version 8, got {version}");
+
+        tileSize = reader.ReadSingle();
+        globalBounds = new BBox
+        {
+            MinX = reader.ReadSingle(),
+            MinY = reader.ReadSingle(),
+            MaxX = reader.ReadSingle(),
+            MaxY = reader.ReadSingle()
+        };
+        tilesX = reader.ReadInt32();
+        tilesY = reader.ReadInt32();
+        totalTiles = reader.ReadInt32();
+        indexTableOffset = reader.ReadInt64();
+        layerCount = reader.ReadInt32();
+        lodCount = reader.ReadInt32();
+        compressionType = reader.ReadInt32();
+        signatureLength = reader.ReadInt32();
+        reader.ReadBytes(60);
     }
 
     public static void WriteTileIndexEntryV7(BinaryWriter writer, TileIndexEntryV7 entry)

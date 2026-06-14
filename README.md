@@ -28,16 +28,17 @@ dotnet build -c Release
 ## Usage
 
 ```bash
-dotnet run -c Release -- <input.osm.pbf> [output.bin] [--format v6|v7] [--country PL] [--no-init-state]
+dotnet run -c Release -- <input.osm.pbf> [output.bin] [--format v8|v7] [--country PL] [--no-init-state]
 ```
 
 Example:
 
 ```bash
-dotnet run -c Release -- poland.osm.pbf poland.bin --format v7
+dotnet run -c Release -- poland.osm.pbf poland.bin
 ```
 
-- `--format v7` (default) — tiled, multi‑LOD binary mesh.
+- `--format v8` (default) — tiled, multi‑LOD binary mesh (`FORMAP04`); lossless re‑encoding of v7, ~44% smaller.
+- `--format v7` — legacy format (`FORMAP03`).
 - `--country <code>` — ISO 3166‑1 alpha‑2 code for the init‑state build (default `PL`).
 - `--no-init-state` — skip building the railway pathfinding / init‑state sidecar.
 
@@ -45,7 +46,7 @@ dotnet run -c Release -- poland.osm.pbf poland.bin --format v7
 
 ## Output format
 
-A binary container (`FORMAP03` / v7): a 128‑byte header → LZ4‑compressed tile blocks (6 LOD levels each) → a tile index table at the end. The authoritative layout lives in [`BinaryFormat.cs`](BinaryFormat.cs) and [`MeshGeometry.cs`](MeshGeometry.cs).
+A binary container (`FORMAP04` / v8): a 128‑byte header (carrying `LayerCount` / `LODCount` / `compressionType`) → a global metadata string table → LZ4‑compressed tile blocks (6 LOD levels each; per‑feature structure + a pooled, structure‑of‑arrays + byte‑shuffled vertex section) → a seekable tile index. It is a **lossless** re‑encoding of v7 (~44% smaller); per‑feature bounding boxes are derived from vertices on read. The authoritative layout lives in [`BinaryFormat.cs`](BinaryFormat.cs), [`FeatureCodecV8.cs`](FeatureCodecV8.cs), [`BinaryFormatV8.cs`](BinaryFormatV8.cs) and [`MeshGeometry.cs`](MeshGeometry.cs); the full spec + change log is in [`docs/format-v8.md`](docs/format-v8.md). The legacy v7 (`FORMAP03`) layout remains available via `--format v7`.
 
 ## Data & attribution
 
