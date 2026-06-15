@@ -1,7 +1,7 @@
 # formap v8 — format change log & RM / SD reader-sync document
 
 **Status:** v8 writer + verification tooling implemented & bit-exact verified on real data (LZ4, −44% on warminsko).
-Done: init-state reader → v8 · hard-cut (v8 default) · README · full-Poland v8 + init-state validated · OsmConverter split · **Ed25519 signing**. **v8 format is now FINAL.** Pending: RM/SD v8 readers · regenerate + deploy signed poland-v8.
+Done: init-state reader → v8 · hard-cut · README · full-Poland v8 + init-state · OsmConverter split · Ed25519 signing · **signed `poland-v8.bin` built & verified** (`--sign-existing`). **v8 format is FINAL.** Pending: RM/SD v8 readers · deploy (drop signed files into RM).
 (Per-change "Status: planned" lines below are superseded by the **Change-completion log** at the bottom — that is the current truth.)
 **Audience:** formap (writer) · RM (reader, Unity / C#) · SD (reader, C++)
 **Purpose:** single source of truth for **every** v8 binary-format change.
@@ -291,3 +291,11 @@ update RM/SD readers yet, layout may still shift until a change is marked shippe
   layout), unreadable by the current reader.** Pre-deploy, so fine: **regenerate poland-v8 (signed) at deploy
   time** with the current code. The v8 format (size encoding + signing) is complete & stable — RM/SD implement
   readers against this spec.
+- 2026-06-14 — **`--sign-existing` added + signed `poland-v8` produced & verified.** New `--sign-existing
+  <file> <priv>` signs an already-built v8 file in place (Ed25519 over the index region, set header
+  `signatureLength`, append the 64-byte signature) — no ~50-min rebuild. Regenerated full-Poland v8 in the FINAL
+  format (11.77 GB, `FORMAP04`) + init-state (79.8 MB), then signed it in place with a production keypair
+  (`D:/Gry/keys/poland.{priv,pub}` — **off git**; `*.priv`/`*.pub` now gitignored). `--verify-sig` → PASS:
+  SIGNATURE OK + 29,312 block hashes, 0 mismatch. Public key to embed in RM/SD:
+  `8d045ef753730aa48e7e2118aa394ac104800ad117c804b5546d7c7fc74afbac`. Deployable artifacts in `D:/Gry/formap/`;
+  remaining = RM/SD v8 readers + dropping the signed files in.

@@ -89,12 +89,24 @@ Provenance + integrity: only maps you signed load; tampering is detected. Cheap 
 
 ---
 
-## 4. Deployment steps
+## 4. Deployment — artifacts are built & signed
 
-1. **Generate the production keypair (once):** `formap --gen-key <path>` → `<path>.priv` (keep **secret, never in any repo**) + `<path>.pub` (embed in RM/SD). The `testkey.*` in `D:/Gry/fmstat/` is a throwaway test key — do not ship it.
-2. **Regenerate the map signed:** `formap poland-260613.osm.pbf poland-v8.bin --sign-key <path>.priv` → produces signed `poland-v8.bin` + `init-state-pl.bin` (~42 min map + ~7 min init-state). ⚠ The current `D:/Gry/formap/poland-v8.bin` is an **unsigned, pre-signing-format** build — regenerate it with the current formap.
-3. **Drop into RM:** replace `Assets/StreamingAssets/Maps/Poland/poland-v7.bin` with `poland-v8.bin` and the new `init-state-pl.bin`. Either rename to `poland-v8.bin` + update `MapLoader.mapFileName`, or dispatch by magic and keep the path.
-4. **Build + smoke-test** (see §5).
+The signed v8 map is **already produced and verified** (`--verify-sig`: SIGNATURE OK, 29,312 blocks, 0 mismatch):
+
+- `D:/Gry/formap/poland-v8.bin` — signed, `FORMAP04`, ~11.77 GB.
+- `D:/Gry/formap/init-state-pl.bin` — ~79.8 MB.
+- Keypair: `D:/Gry/keys/poland.priv` (**secret — kept off git by the owner**) + `poland.pub`.
+- **Public key to embed in RM** (32-byte Ed25519, hex):
+  `8d045ef753730aa48e7e2118aa394ac104800ad117c804b5546d7c7fc74afbac`
+
+Steps:
+1. **Embed the public key** above in RM as a `byte[32]` constant (used by `Ed25519.Verify`). If the keypair is ever rotated, re-embed the new public key.
+2. **Drop the files in:** replace `Assets/StreamingAssets/Maps/Poland/poland-v7.bin` with `poland-v8.bin` + the new `init-state-pl.bin`. Either rename to `poland-v8.bin` + update `MapLoader.mapFileName`, or dispatch by magic and keep the path.
+3. **Build + smoke-test** (§5).
+
+**When the map data updates** (re-signing the new build):
+- `formap <new.osm.pbf> poland-v8.bin --sign-key D:/Gry/keys/poland.priv` (convert + sign in one run), **or**
+- `formap <new.osm.pbf> poland-v8.bin` then `formap --sign-existing poland-v8.bin D:/Gry/keys/poland.priv` — **signs an already-built map in place in seconds, no ~50-min rebuild.**
 
 ---
 
