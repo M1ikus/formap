@@ -2248,4 +2248,34 @@ public class OsmConverter
         }
     }
 
+    /// <summary>Frees the large in-memory conversion state — feature lists (Buildings is by far the biggest),
+    /// the way cache (never cleared during the run), and the remaining work buffers — after the map .bin has
+    /// been written. Call this before the in-process InitState build phase: that phase re-reads the written
+    /// .bin, so it does NOT need any of this state, and keeping GBs of dead objects alive starves it of RAM
+    /// and triggers heavy GC (the standalone --init-state-only run is ~3× faster precisely because it has none
+    /// of this competing for memory). Purely a memory release — does not affect the InitState output.</summary>
+    public void ReleaseConversionState()
+    {
+        static void Drop(List<MeshGeometry> l) { l.Clear(); l.TrimExcess(); }
+        Drop(highways); Drop(railways); Drop(buildings); Drop(waterFeatures); Drop(waterways);
+        Drop(industrialAreas); Drop(militaryAreas); Drop(platforms); Drop(forests); Drop(pois);
+        Drop(adminBoundaries); Drop(places); Drop(coastlines);
+
+        wayCache.Clear(); wayCache.TrimExcess();
+        _wayIdToLineRefs.Clear();
+        railwayNodeUseCount.Clear();
+        bufferedRailways.Clear(); bufferedRailways.TrimExcess();
+        bufferedPolygonWays.Clear(); bufferedPolygonWays.TrimExcess();
+        bufferedHighwayWays.Clear(); bufferedHighwayWays.TrimExcess();
+        bufferedWaterwayWays.Clear(); bufferedWaterwayWays.TrimExcess();
+        bufferedCoastlineWays.Clear(); bufferedCoastlineWays.TrimExcess();
+        bufferedRelations.Clear(); bufferedRelations.TrimExcess();
+        bufferedWaterwayRelations.Clear(); bufferedWaterwayRelations.TrimExcess();
+
+        // Reclaim now, at this phase boundary, so the InitState read-back starts with a clean heap.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
+
 }

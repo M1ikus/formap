@@ -118,6 +118,32 @@ public static class FeatureCodecV8
         return g;
     }
 
+    /// <summary>Advances <paramref name="r"/> past one feature's structure record WITHOUT materializing it —
+    /// no MeshGeometry, no index/hole/segment/junction lists, no metadata dictionary, no string-table lookups.
+    /// Used by <see cref="BinaryFormatV8.DecodeBlockFiltered"/> to skip layers the caller does not want while
+    /// still returning each feature's vertexCount (needed to skip its slice of the block's vertex pool).
+    /// Must stay byte-for-byte in lockstep with <see cref="ReadFeatureStructure"/>.</summary>
+    public static int SkipFeatureStructure(BinaryReader r)
+    {
+        byte flags = r.ReadByte();
+        bool hasIdx = (flags & 1) != 0, hasHole = (flags & 2) != 0, hasSeg = (flags & 4) != 0,
+             hasJunc = (flags & 8) != 0, hasMeta = (flags & 16) != 0, wide = (flags & 32) != 0;
+
+        int vertexCount = (int)ReadVarint(r);
+
+        if (hasIdx)
+        {
+            int ic = (int)ReadVarint(r);
+            r.BaseStream.Seek((long)ic * (wide ? 4 : 2), SeekOrigin.Current); // indices are fixed-width (int32 | uint16)
+        }
+        // hole/segment/junction/metadata values are varints (variable length) → must decode each to find the boundary.
+        if (hasHole) { int n = (int)ReadVarint(r); for (int i = 0; i < n; i++) ReadVarint(r); }
+        if (hasSeg)  { int n = (int)ReadVarint(r); for (int i = 0; i < n; i++) ReadVarint(r); }
+        if (hasJunc) { int n = (int)ReadVarint(r); for (int i = 0; i < n; i++) ReadVarint(r); }
+        if (hasMeta) { int n = (int)ReadVarint(r); for (int i = 0; i < n; i++) { ReadVarint(r); ReadVarint(r); } }
+        return vertexCount;
+    }
+
     public static string? Compare(MeshGeometry a, MeshGeometry b)
     {
         if (a.Vertices.Count != b.Vertices.Count) return $"vertex count {a.Vertices.Count}->{b.Vertices.Count}";

@@ -50,6 +50,12 @@ class Program
             return;
         }
 
+        if (args.Length >= 2 && args[0] == "--verify-logic")
+        {
+            BinaryFormatV8.VerifyLogicFilterV8(args[1]);
+            return;
+        }
+
         if (args.Length >= 3 && args[0] == "--verify-v8")
         {
             BinaryFormatV8.VerifyAgainstV7(args[1], args[2]);
@@ -176,6 +182,9 @@ class Program
         {
             Console.WriteLine();
             Console.WriteLine("=== InitState build phase ===");
+            // Free the conversion state (feature lists, way cache, buffers) first: the InitState phase re-reads
+            // the written .bin, so this GB-scale state is dead weight that would otherwise starve it of RAM.
+            converter.ReleaseConversionState();
             try
             {
                 InitStateBuilder.BuildAndWrite(outputFile, countryCode);

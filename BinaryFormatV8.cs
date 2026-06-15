@@ -125,6 +125,74 @@ public static class BinaryFormatV8
         return dict;
     }
 
+    /// <summary>Like <see cref="DecodeBlock"/> but materializes ONLY the layers in <paramref name="wanted"/>.
+    /// Features of other layers are parsed just far enough to advance the reader and learn their vertexCount
+    /// (the block vertex pool is byte-shuffled as a whole, so the whole pool is still un-shuffled), but NO
+    /// MeshGeometry / index-list / metadata / Vector2 objects are built for them — their vertices are skipped
+    /// in the pool. Output for the wanted layers is bit-identical to <see cref="DecodeBlock"/>; this just avoids
+    /// materializing the heavy non-logic layers (Buildings/Forests/Highways/Water). Used by
+    /// <see cref="ReadLogicLayersV8"/>.</summary>
+    public static Dictionary<BinaryFormat.LayerType, List<MeshGeometry>> DecodeBlockFiltered(
+        byte[] body, IReadOnlyList<string> table, HashSet<BinaryFormat.LayerType> wanted)
+    {
+        var dict = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
+        var order = new List<(MeshGeometry? g, int vc)>();
+
+        using var ms = new MemoryStream(body, false);
+        var br = new BinaryReader(ms, Encoding.UTF8, leaveOpen: true);
+
+        int structLen = (int)FeatureCodecV8.ReadVarint(br);
+        long structEnd = ms.Position + structLen;
+        while (ms.Position < structEnd)
+        {
+            int layerType = br.ReadInt32();
+            int featCount = br.ReadInt32();
+            if (wanted.Contains((BinaryFormat.LayerType)layerType))
+            {
+                var list = new List<MeshGeometry>(featCount);
+                dict[(BinaryFormat.LayerType)layerType] = list;
+                for (int f = 0; f < featCount; f++)
+                {
+                    var g = FeatureCodecV8.ReadFeatureStructure(br, table, out int vc);
+                    list.Add(g);
+                    order.Add((g, vc));
+                }
+            }
+            else
+            {
+                // Non-wanted layer: skip the structure (no allocation) but keep its vertexCounts so the pool
+                // slices stay aligned with the wanted features that follow.
+                for (int f = 0; f < featCount; f++)
+                    order.Add((null, FeatureCodecV8.SkipFeatureStructure(br)));
+            }
+        }
+
+        // No wanted layer present in this block → the vertex pool is irrelevant; skip un-shuffling it entirely.
+        if (dict.Count == 0) return dict;
+
+        long totalVerts = 0;
+        foreach (var (_, vc) in order) totalVerts += vc;
+
+        byte[] xB = FeatureCodecV8.Unshuffle(br.ReadBytes((int)totalVerts * 4), 4);
+        byte[] yB = FeatureCodecV8.Unshuffle(br.ReadBytes((int)totalVerts * 4), 4);
+
+        int vi = 0;
+        foreach (var (g, vc) in order)
+        {
+            if (g != null)
+            {
+                for (int k = 0; k < vc; k++)
+                {
+                    int o = (vi + k) * 4;
+                    g.Vertices.Add(new Vector2(BitConverter.ToSingle(xB, o), BitConverter.ToSingle(yB, o)));
+                }
+                g.ComputeBoundingBox(); // bbox not stored in v8 — derived from vertices (bit-exact)
+            }
+            vi += vc; // advance past non-wanted features' vertices too (their slices are not materialized)
+        }
+        return dict;
+    }
+
     public static void WriteV8(Stream output, BBox globalBounds, int tilesX, int tilesY,
         int layerCount, int lodCount,
         IReadOnlyList<TileGrid.TileInfo> tiles,
@@ -329,34 +397,41 @@ public static class BinaryFormatV8
             table[i] = Encoding.UTF8.GetString(reader.ReadBytes(len));
         }
 
-        // Index — keep only each tile's LOD0 offset/size.
+        // Bitmask of the wanted layers — lets us skip whole blocks (no decompress, no decode) when a tile's
+        // LOD0 contains none of them (e.g. a rural tile with only Buildings/Forests/Water/Highways).
+        int wantedMask = 0;
+        foreach (var lt in wanted) wantedMask |= 1 << (int)lt;
+
+        // Index — keep only each tile's LOD0 offset/size + LayerMask.
         input.Position = indexOffset;
-        var lod0 = new List<(long off, int csz)>(totalTiles);
+        var lod0 = new List<(long off, int csz, int mask)>(totalTiles);
         for (int t = 0; t < totalTiles; t++)
         {
             reader.ReadInt64(); reader.ReadInt32(); reader.ReadInt32();
             reader.ReadSingle(); reader.ReadSingle(); reader.ReadSingle(); reader.ReadSingle();
-            long off0 = 0; int csz0 = 0;
+            long off0 = 0; int csz0 = 0, mask0 = 0;
             for (int lod = 0; lod < lodCount; lod++)
             {
-                long fo = reader.ReadInt64(); int cs = reader.ReadInt32(); reader.ReadInt32(); reader.ReadInt32();
-                if (lod == 0) { off0 = fo; csz0 = cs; }
+                long fo = reader.ReadInt64(); int cs = reader.ReadInt32(); reader.ReadInt32(); int lm = reader.ReadInt32();
+                if (lod == 0) { off0 = fo; csz0 = cs; mask0 = lm; }
             }
             for (int lod = 0; lod < lodCount; lod++) reader.ReadBytes(32); // per-LOD SHA-256 hashes (Pillar 2 — skipped here)
             for (int k = 0; k < layerCount; k++) reader.ReadInt32();
-            lod0.Add((off0, csz0));
+            lod0.Add((off0, csz0, mask0));
         }
 
         var acc = new Dictionary<BinaryFormat.LayerType, List<MeshGeometry>>();
         foreach (var lt in wanted) acc[lt] = new List<MeshGeometry>();
 
-        foreach (var (off, csz) in lod0)
+        foreach (var (off, csz, mask) in lod0)
         {
-            if (csz <= 0) continue;
+            if (csz <= 0 || (mask & wantedMask) == 0) continue; // empty LOD0, or no wanted layer in this tile
             input.Position = off;
             var comp = reader.ReadBytes(csz);
             byte[] body = compressionType == CompZstd ? zstd!.Unwrap(comp).ToArray() : LZ4Pickler.Unpickle(comp);
-            var dict = DecodeBlock(body, table);
+            // Filtered decode: materializes ONLY the wanted layers; non-wanted features (Buildings/Forests/…)
+            // are skipped in the pool without building objects (bit-identical output for the wanted layers).
+            var dict = DecodeBlockFiltered(body, table, wanted);
             foreach (var lt in wanted)
                 if (dict.TryGetValue(lt, out var list) && list.Count > 0)
                     acc[lt].AddRange(list);
@@ -529,6 +604,112 @@ public static class BinaryFormatV8
         for (int i = 0; i < perLayer.Length; i++)
             if (perLayer[i] > 0)
                 Console.WriteLine($"    {(BinaryFormat.LayerType)i,-16}: {perLayer[i],12:N0} feat  {perLayerVerts[i],14:N0} verts");
+    }
+
+    /// <summary>Read-side regression check covering BOTH halves of the InitState fast-path. For EVERY LOD0
+    /// block it (1) decodes both with the unfiltered <see cref="DecodeBlock"/> and the filtered
+    /// <see cref="DecodeBlockFiltered"/> (logic layers only) and asserts the wanted-layer features are
+    /// bit-identical, and (2) recomputes the block's LayerMask from the layers actually present and asserts it
+    /// equals the stored index mask — which is what <see cref="ReadLogicLayersV8"/>'s (mask&amp;wantedMask)==0
+    /// whole-block skip relies on, so a match across all blocks proves the skip can never drop a wanted layer.
+    /// Run via `formap --verify-logic &lt;v8&gt;`.</summary>
+    public static void VerifyLogicFilterV8(string path)
+    {
+        var wanted = new HashSet<BinaryFormat.LayerType>
+        {
+            BinaryFormat.LayerType.Railways, BinaryFormat.LayerType.AdminBoundaries,
+            BinaryFormat.LayerType.Places, BinaryFormat.LayerType.POIs,
+            BinaryFormat.LayerType.Platforms, BinaryFormat.LayerType.Coastlines
+        };
+
+        using var input = File.OpenRead(path);
+        var reader = new BinaryReader(input, Encoding.UTF8, leaveOpen: true);
+        input.Position = 0;
+        string magic = Encoding.ASCII.GetString(reader.ReadBytes(8));
+        if (magic != BinaryFormat.MagicV8) throw new InvalidDataException($"Expected {BinaryFormat.MagicV8}, got '{magic}'");
+        BinaryFormat.ReadHeaderV8(reader, out _, out _, out _, out _, out int totalTiles,
+            out long indexOffset, out int layerCount, out int lodCount, out int compressionType, out _);
+        using var zstd = compressionType == CompZstd ? new Decompressor() : null;
+
+        int strCount = (int)FeatureCodecV8.ReadVarint(reader);
+        var table = new string[strCount];
+        for (int i = 0; i < strCount; i++)
+        {
+            int len = (int)FeatureCodecV8.ReadVarint(reader);
+            table[i] = Encoding.UTF8.GetString(reader.ReadBytes(len));
+        }
+
+        int wantedMask = 0;
+        foreach (var lt in wanted) wantedMask |= 1 << (int)lt;
+
+        input.Position = indexOffset;
+        var lod0 = new List<(long off, int csz, int mask)>(totalTiles);
+        for (int t = 0; t < totalTiles; t++)
+        {
+            reader.ReadInt64(); reader.ReadInt32(); reader.ReadInt32();
+            reader.ReadSingle(); reader.ReadSingle(); reader.ReadSingle(); reader.ReadSingle();
+            long off0 = 0; int csz0 = 0, mask0 = 0;
+            for (int lod = 0; lod < lodCount; lod++)
+            {
+                long fo = reader.ReadInt64(); int cs = reader.ReadInt32(); reader.ReadInt32(); int lm = reader.ReadInt32();
+                if (lod == 0) { off0 = fo; csz0 = cs; mask0 = lm; }
+            }
+            for (int lod = 0; lod < lodCount; lod++) reader.ReadBytes(32);
+            for (int k = 0; k < layerCount; k++) reader.ReadInt32();
+            lod0.Add((off0, csz0, mask0));
+        }
+
+        long compared = 0, fails = 0; int blocks = 0, maskMismatches = 0, skippableBlocks = 0;
+        var perLayer = new long[BinaryFormat.LayerCount];
+        foreach (var (off, csz, mask) in lod0)
+        {
+            if (csz <= 0) continue;
+            input.Position = off;
+            var comp = reader.ReadBytes(csz);
+            byte[] body = compressionType == CompZstd ? zstd!.Unwrap(comp).ToArray() : LZ4Pickler.Unpickle(comp);
+            var full = DecodeBlock(body, table);
+            var filt = DecodeBlockFiltered(body, table, wanted);
+            blocks++;
+
+            // Cover the OTHER half of the optimization — the (mask & wantedMask)==0 whole-block skip in
+            // ReadLogicLayersV8. Recompute the mask from the layers actually present in the full decode (mirrors
+            // EncodeBlock: a bit is set iff that layer has features) and assert it equals the stored index mask.
+            // If this holds for every block, then mask&wantedMask==0 can NEVER skip a block that holds a wanted
+            // layer, so the fast-path skip is output-identical.
+            int recomputed = 0;
+            foreach (var (lt, list) in full) if (list.Count > 0) recomputed |= 1 << (int)lt;
+            if (recomputed != mask)
+            {
+                maskMismatches++;
+                if (maskMismatches <= 8) Console.WriteLine($"  block@{off}: stored mask 0x{mask:X} != present-layer mask 0x{recomputed:X}");
+            }
+            if ((mask & wantedMask) == 0) skippableBlocks++; // would be skipped by the fast path (no decompress/decode)
+
+            foreach (var lt in wanted)
+            {
+                full.TryGetValue(lt, out var a);
+                filt.TryGetValue(lt, out var b);
+                int ca = a?.Count ?? 0, cb = b?.Count ?? 0;
+                if (ca != cb) { fails++; if (fails <= 8) Console.WriteLine($"  block@{off} {lt}: count {ca} vs {cb}"); continue; }
+                for (int f = 0; f < ca; f++)
+                {
+                    var diff = FeatureCodecV8.Compare(a![f], b![f]);
+                    compared++; perLayer[(int)lt]++;
+                    if (diff != null) { fails++; if (fails <= 8) Console.WriteLine($"  block@{off} {lt} feat {f}: {diff}"); }
+                }
+            }
+        }
+        fails += maskMismatches;
+
+        Console.WriteLine($"[VERIFY-LOGIC] {path}");
+        Console.WriteLine($"  blocks decoded both ways: {blocks:N0}   wanted-layer features compared: {compared:N0}");
+        Console.WriteLine($"  index mask vs present layers: {maskMismatches:N0} mismatch(es)   blocks the fast path skips (no wanted layer): {skippableBlocks:N0}");
+        for (int i = 0; i < perLayer.Length; i++)
+            if (perLayer[i] > 0) Console.WriteLine($"    {(BinaryFormat.LayerType)i,-16}: {perLayer[i],12:N0}");
+        Console.WriteLine(fails == 0
+            ? "[VERIFY-LOGIC] PASS — filtered read is bit-identical to the full decode AND every index mask matches the layers present (mask-skip proven safe)"
+            : $"[VERIFY-LOGIC] FAIL — {fails:N0} mismatches");
+        if (fails != 0) Environment.Exit(1);
     }
 
     private static (int, int, int, float, float, float, float, float) FeatKey(MeshGeometry g) =>
