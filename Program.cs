@@ -34,6 +34,16 @@ class Program
             return;
         }
 
+        if (args.Length >= 3 && args[0] == "--sign-existing")
+        {
+            string file = args[1];
+            string privPath = args[2];
+            if (!File.Exists(file)) { Console.WriteLine($"Error: File {file} not found."); Environment.Exit(1); }
+            if (!File.Exists(privPath)) { Console.WriteLine($"Error: Private key {privPath} not found."); Environment.Exit(1); }
+            BinaryFormatV8.SignExistingV8(file, File.ReadAllBytes(privPath));
+            return;
+        }
+
         if (args.Length >= 2 && args[0] == "--read-v8")
         {
             BinaryFormatV8.SummarizeV8(args[1]);
@@ -58,6 +68,7 @@ class Program
             Console.WriteLine();
             Console.WriteLine("  --gen-key <path>              Generate an Ed25519 keypair → <path>.priv / <path>.pub, then exit");
             Console.WriteLine("  --verify-sig <file> <pubkey>  Verify a signed v8 file's signature + per-block hashes, then exit");
+            Console.WriteLine("  --sign-existing <file> <priv> Ed25519-sign an existing v8 file in place (no re-build), then exit");
             return;
         }
 

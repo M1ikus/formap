@@ -106,3 +106,8 @@ Thumbs.db
 # Internal/private engineering notes — NIE publikować (SD + RM + projekt zabezpieczenia)
 docs/internal/
 
+# Ed25519 signing keys — NEVER commit (the private key is the secret; keep it off git entirely)
+*.priv
+*.pub
+*.key
+

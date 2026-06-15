@@ -364,6 +364,43 @@ public static class BinaryFormatV8
         return acc;
     }
 
+    /// <summary>Signs an already-written v8 file IN PLACE (no re-build): Ed25519 over the index byte region
+    /// (identical region to WriteV8/VerifySignatureV8), sets the header signatureLength, and appends the 64-byte
+    /// signature. Lets you build the (expensive) map unsigned and sign it cheaply later with your key.
+    /// Re-signing an already-signed file overwrites the trailing signature.</summary>
+    public static void SignExistingV8(string path, byte[] privateKey)
+    {
+        BBox bounds; long indexOffset; int tilesX, tilesY, totalTiles, layerCount, lodCount, compressionType, signatureLength;
+        using (var r = new BinaryReader(File.OpenRead(path), Encoding.UTF8))
+        {
+            string magic = Encoding.ASCII.GetString(r.ReadBytes(8));
+            if (magic != BinaryFormat.MagicV8) throw new InvalidDataException($"Expected {BinaryFormat.MagicV8}, got '{magic}'");
+            BinaryFormat.ReadHeaderV8(r, out _, out bounds, out tilesX, out tilesY, out totalTiles,
+                out indexOffset, out layerCount, out lodCount, out compressionType, out signatureLength);
+        }
+
+        long fileLen = new FileInfo(path).Length;
+        long indexEnd = signatureLength > 0 ? fileLen - signatureLength : fileLen; // exclude any existing trailing sig
+        if (indexEnd < indexOffset) throw new InvalidDataException($"Corrupt v8 file: indexEnd {indexEnd} < indexOffset {indexOffset}");
+
+        byte[] indexBytes = new byte[indexEnd - indexOffset];
+        using (var fs = File.OpenRead(path)) { fs.Position = indexOffset; fs.ReadExactly(indexBytes); }
+
+        byte[] sig = Signing.Sign(privateKey, indexBytes);
+
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite))
+        {
+            var w = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
+            fs.Position = 0; // rewrite header with signatureLength set (avoids a hard-coded field offset)
+            BinaryFormat.WriteHeaderV8(w, bounds, tilesX, tilesY, totalTiles, indexOffset, layerCount, lodCount, compressionType, Signing.SignatureSize);
+            w.Flush();
+            fs.Position = indexEnd; // append (was unsigned) or overwrite the existing trailing signature (re-sign)
+            fs.Write(sig, 0, sig.Length);
+            fs.Flush();
+        }
+        Console.WriteLine($"[SIGN-EXISTING] {path}: signed index region {indexBytes.Length:N0} B → {sig.Length}-byte Ed25519 signature at offset {indexEnd:N0}.");
+    }
+
     /// <summary>Verifies a signed v8 file (Pillar 2): (1) re-reads the entire index byte region and Ed25519-verifies
     /// it against the trailing signature, then (2) for each tile/LOD with CompressedSize&gt;0, SHA-256s the compressed
     /// on-disk block and compares to the per-LOD hash stored in the index. Prints SIGNATURE OK/FAIL, the block-hash
