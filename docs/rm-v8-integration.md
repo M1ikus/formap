@@ -10,7 +10,7 @@
 ## 0. TL;DR
 
 - v8 is a **lossless** re-encoding of v7 — same data, same LOD/tiling/duplication, ~**44% smaller** on disk (Poland 22.5 GB → 11.2 GB), and **fast LZ4 decode** (no new decompressor).
-- RM's job: **a v8 read path** + (recommended) **Ed25519 signature verification**, then **swap the map file**.
+- RM's job: **a v8 read path** (required) + **Ed25519 signature verification** (OPTIONAL — fine to defer to v9), then **swap the map file**.
 - **You do not write the reader from scratch.** formap's `BinaryFormatV8.cs` + `FeatureCodecV8.cs` + `Signing.cs` are a **complete, working C# v8 reader** — port them into RM, mapping `formap.MeshGeometry` → RM's mesh types.
 - Decode is **fast and main-thread-safe** — it fits your existing 1-tile-per-frame `LoadTilesCoroutine` with negligible extra cost (no Zstd; we benchmarked it and chose LZ4-HC specifically to keep your load time intact).
 
@@ -76,9 +76,11 @@ That's it — you now have the same `Dictionary<LayerType, List<MeshGeometry>>` 
 
 ---
 
-## 3. Signature verification (recommended)
+## 3. Signature verification (OPTIONAL — fine to ship in v9)
 
-Provenance + integrity: only maps you signed load; tampering is detected. Cheap and one-time (the per-block hash check is ~0.18 ms/tile and rides your existing per-frame streaming).
+**Not required to load v8.** A signed v8 map reads + renders perfectly *without* verifying — the reader just ignores the trailing 64-byte signature and doesn't check the hashes. The **only** mandatory signing-related bit is in §2: **read/skip the per-LOD index hashes** (`lodCount × 32` bytes per entry) so the index parse stays aligned — they're always present, signed or not. Embedding the public key + verifying below is the *enforcement* layer ("only maps you signed load; tampering rejected") — add it whenever (a later pass / v9 is fine).
+
+When you enable it — provenance + integrity, cheap and one-time (the per-block hash check is ~0.18 ms/tile and rides your existing per-frame streaming):
 
 1. Add a managed Ed25519 to RM — **BouncyCastle.Cryptography** works in Unity (IL2CPP); port `Signing.Verify`.
 2. **Embed the public key** (32 bytes, from `formap --gen-key`) in RM as a constant `byte[]`.
@@ -117,7 +119,7 @@ Steps:
 - [ ] `layerCount`/`lodCount` read from the header, not hard-coded.
 - [ ] Vertices bit-identical (spot-check a known feature's coords — un-shuffle is exact).
 - [ ] init-state builds / loads; graph stats match (nodes/edges/stations).
-- [ ] Signature: a correctly-signed map loads; a tampered map is rejected.
+- [ ] (Optional / v9) Signature: a correctly-signed map loads; a tampered map is rejected.
 
 formap-side cross-check tools (run against any v8 file): `formap --verify-sig <file> <pub>` (signature + all block hashes), `formap --read-v8 <file>` (per-layer feature/vertex totals to compare against your decode).
 
