@@ -111,3 +111,8 @@ docs/internal/
 *.pub
 *.key
 
+# Local regen output + deployment rollback backups (large binaries, never commit)
+/regen/
+/deployed-backup-*/
+*.bak
+
