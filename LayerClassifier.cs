@@ -203,8 +203,16 @@ public static class LayerClassifier
     }
 
     /// <summary>
-    /// Detect railway route relations.
-    /// OSM `type=route` + `route=tracks|railway|train` with a `ref` tag (the line number).
+    /// Detect railway *infrastructure* route relations — those whose `ref` is a physical PKP PLK
+    /// line number (the "lk" number the game shows). These are OSM `type=route` + `route=tracks|railway`.
+    ///
+    /// `route=train` is deliberately EXCLUDED: it tags a *carrier's passenger service* (Polregio,
+    /// Koleje Śląskie, PKP Intercity, …) whose `ref` is a service/brand code ("S51", "1", "IC38172"),
+    /// NOT a PLK infrastructure line number. Propagating those refs painted every track a train runs
+    /// over with the service number — e.g. Sucha Beskidzka→Zakopane wrongly showed lk51 (Koleje Śląskie
+    /// S51) and lk1 (Polregio "Podhalańska Kolej Regionalna", ref=1) on top of the real lk98/lk99.
+    /// Verified against poland-260613.osm.pbf: 0 of 606 `route=train` relations are operated by PKP PLK,
+    /// so excluding them never drops a real line number — every PLK line lives on route=railway/tracks.
     /// </summary>
     public static bool IsRailwayRouteRelation(Relation relation)
     {
@@ -212,6 +220,7 @@ public static class LayerClassifier
         if (!relation.Tags.ContainsKey("type") || relation.Tags["type"] != "route") return false;
         if (!relation.Tags.ContainsKey("route")) return false;
         var route = relation.Tags["route"];
-        return route == "tracks" || route == "railway" || route == "train";
+        // Do NOT add "train" here — that re-introduces the lk51/lk1 service-ref bug (see summary above).
+        return route == "tracks" || route == "railway";
     }
 }
