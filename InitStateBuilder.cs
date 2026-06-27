@@ -116,7 +116,11 @@ public static class InitStateBuilder
             }
             if (f.Metadata.TryGetValue("service", out var service))
             {
-                if (service is "yard" or "spur" or "crossover") continue;
+                // Keep service=crossover: a crossover is a real track-switching connection between
+                // running tracks that passenger trains use. Excluding it deleted ~5k legitimate links
+                // nationwide and forced detours (e.g. Sucha Beskidzka lk97↔lk98 routed via the throat /
+                // lk625 instead of the R1-R2 crossover). Only skip shunting yards and dead-end spurs.
+                if (service is "yard" or "spur") continue;
             }
             if (f.Metadata.TryGetValue("usage", out var usage))
             {
