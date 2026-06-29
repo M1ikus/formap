@@ -50,6 +50,24 @@ class Program
             return;
         }
 
+        // Assert that an init-state file is valid for a given v8 map (the freshness gate the game uses):
+        // matches by v8 tile-index content hash, NOT mtime. Exit 0 = VALID (game fast-paths), 1 = STALE/mismatch
+        // (game would rebuild the graph), 2 = error. Use in deploy/CI to catch a mispaired init-state before shipping.
+        if (args.Length >= 4 && args[0] == "--check-initstate") // <init-state.bin> <map.v8.bin> <country>
+        {
+            string isPath = args[1], v8Path = args[2], country = args[3];
+            if (!File.Exists(isPath)) { Console.WriteLine($"Error: init-state {isPath} not found."); Environment.Exit(2); }
+            if (!File.Exists(v8Path)) { Console.WriteLine($"Error: v8 map {v8Path} not found."); Environment.Exit(2); }
+            byte[] mapHash;
+            try { mapHash = BinaryFormatV8.ComputeMapIndexHash(v8Path); }
+            catch (Exception ex) { Console.WriteLine($"[CHECK-INITSTATE] cannot hash {v8Path}: {ex.Message}"); Environment.Exit(2); return; }
+            bool ok = RailwayManager.GraphData.InitStateReader.IsValidFor(isPath, country, mapHash);
+            Console.WriteLine($"[CHECK-INITSTATE] {isPath} vs {v8Path} (country={country})");
+            Console.WriteLine($"  v8 index hash: {Convert.ToHexString(mapHash)}");
+            Console.WriteLine($"  result: {(ok ? "VALID — game uses the fast-path" : "STALE/MISMATCH — game would rebuild the graph")}");
+            Environment.Exit(ok ? 0 : 1);
+        }
+
         if (args.Length >= 2 && args[0] == "--verify-logic")
         {
             BinaryFormatV8.VerifyLogicFilterV8(args[1]);
@@ -75,6 +93,7 @@ class Program
             Console.WriteLine("  --gen-key <path>              Generate an Ed25519 keypair → <path>.priv / <path>.pub, then exit");
             Console.WriteLine("  --verify-sig <file> <pubkey>  Verify a signed v8 file's signature + per-block hashes, then exit");
             Console.WriteLine("  --sign-existing <file> <priv> Ed25519-sign an existing v8 file in place (no re-build), then exit");
+            Console.WriteLine("  --check-initstate <init-state> <map.v8> <country>  Assert init-state matches the v8 map (content hash, not mtime); exit 0=valid, 1=stale");
             return;
         }
 
