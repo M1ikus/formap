@@ -476,6 +476,29 @@ public static class BinaryFormatV8
         Console.WriteLine($"[SIGN-EXISTING] {path}: signed index region {indexBytes.Length:N0} B → {sig.Length}-byte Ed25519 signature at offset {indexEnd:N0}.");
     }
 
+    /// <summary>SHA-256 over the v8 tile-index byte region [indexOffset, indexEnd) — the SAME bytes the Ed25519
+    /// signature covers, so it transitively fingerprints every block (each block's SHA-256 lives in the index).
+    /// Stable across copy / deploy / mtime change, and signing-independent (works on unsigned files too —
+    /// indexEnd = fileLen when signatureLength == 0). Used to gate init-state freshness by content, not timestamp.
+    /// Both formap (at build) and the game (at the freshness check) must hash this exact region.</summary>
+    public static byte[] ComputeMapIndexHash(string path)
+    {
+        using var fs = File.OpenRead(path);
+        using var reader = new BinaryReader(fs, Encoding.UTF8, leaveOpen: true);
+        fs.Position = 0;
+        string magic = Encoding.ASCII.GetString(reader.ReadBytes(8));
+        if (magic != BinaryFormat.MagicV8) throw new InvalidDataException($"Expected {BinaryFormat.MagicV8}, got '{magic}'");
+        BinaryFormat.ReadHeaderV8(reader, out _, out _, out _, out _, out _,
+            out long indexOffset, out _, out _, out _, out int signatureLength);
+        long fileLen = fs.Length;
+        long indexEnd = signatureLength > 0 ? fileLen - signatureLength : fileLen;
+        if (indexEnd < indexOffset) throw new InvalidDataException($"Corrupt v8 file: indexEnd {indexEnd} < indexOffset {indexOffset}");
+        fs.Position = indexOffset;
+        byte[] indexBytes = new byte[indexEnd - indexOffset];
+        fs.ReadExactly(indexBytes);
+        return SHA256.HashData(indexBytes);
+    }
+
     /// <summary>Verifies a signed v8 file (Pillar 2): (1) re-reads the entire index byte region and Ed25519-verifies
     /// it against the trailing signature, then (2) for each tile/LOD with CompressedSize&gt;0, SHA-256s the compressed
     /// on-disk block and compares to the per-LOD hash stored in the index. Prints SIGNATURE OK/FAIL, the block-hash

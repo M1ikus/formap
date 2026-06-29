@@ -40,6 +40,9 @@ public static class InitStateBuilder
         state.Header.CountryCode = countryCode;
         state.Header.Version = InitStateHeader.CurrentVersion;
         state.Header.SourceMapMtime = new FileInfo(mapBinPath).LastWriteTimeUtc.ToFileTimeUtc();
+        // v4: pin the v8 content fingerprint so the freshness gate survives copy/deploy (mtime is unreliable).
+        try { state.Header.SourceMapHash = BinaryFormatV8.ComputeMapIndexHash(mapBinPath); }
+        catch (Exception ex) { Console.WriteLine($"[InitStateBuilder] WARN: no v8 content hash for {mapBinPath} ({ex.Message}); freshness gate falls back to version/country."); }
         state.Header.CellSizeM = 10f;
         state.Header.JunctionToleranceM = 0.5f;
         state.Header.GraphCellSizeM = 10f;

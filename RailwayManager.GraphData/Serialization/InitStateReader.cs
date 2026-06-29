@@ -32,6 +32,8 @@ namespace RailwayManager.GraphData
             // Header
             state.Header.CountryCode = ReadString(br);
             state.Header.SourceMapMtime = br.ReadInt64();
+            int mapHashLen = br.ReadInt32();              // v4: source v8 content fingerprint
+            state.Header.SourceMapHash = mapHashLen > 0 ? br.ReadBytes(mapHashLen) : null;
             state.Header.CellSizeM = br.ReadSingle();
             state.Header.JunctionToleranceM = br.ReadSingle();
             state.Header.GraphCellSizeM = br.ReadSingle();
@@ -62,8 +64,13 @@ namespace RailwayManager.GraphData
             return state;
         }
 
-        /// <summary>Quick check whether the file is valid and the countryCode matches — without a full load.</summary>
-        public static bool IsValidFor(string path, string expectedCountryCode, long maxAcceptedSourceMtime)
+        /// <summary>Quick check whether the file is valid and was built from the given map — without a full load.
+        /// v4: the freshness gate compares the source map's CONTENT fingerprint (SHA-256 of the v8 tile-index region —
+        /// BinaryFormatV8.ComputeMapIndexHash on the formap side / MapSignatureVerifier on the game side),
+        /// NOT the file mtime — mtime changes when poland-v8.bin is copied to StreamingAssets and caused
+        /// false "stale" → unwanted full rebuilds. Pass the hash of the *deployed* v8 map. If <paramref
+        /// name="expectedMapHash"/> is null the content check is skipped (magic/version/country only).</summary>
+        public static bool IsValidFor(string path, string expectedCountryCode, byte[]? expectedMapHash)
         {
             try
             {
@@ -75,8 +82,15 @@ namespace RailwayManager.GraphData
                 if (version != InitStateHeader.CurrentVersion) return false;
                 string? country = ReadString(br);
                 if (!string.IsNullOrEmpty(expectedCountryCode) && country != expectedCountryCode) return false;
-                long mtime = br.ReadInt64();
-                if (maxAcceptedSourceMtime > 0 && mtime < maxAcceptedSourceMtime) return false;
+                br.ReadInt64(); // SourceMapMtime — informational only since v4 (not a gate)
+                int hlen = br.ReadInt32();
+                byte[]? mapHash = hlen > 0 ? br.ReadBytes(hlen) : null;
+                if (expectedMapHash != null)
+                {
+                    if (mapHash == null || mapHash.Length != expectedMapHash.Length) return false;
+                    for (int i = 0; i < mapHash.Length; i++)
+                        if (mapHash[i] != expectedMapHash[i]) return false;
+                }
                 return true;
             }
             catch { return false; }

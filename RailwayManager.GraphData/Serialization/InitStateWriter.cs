@@ -12,6 +12,7 @@ namespace RailwayManager.GraphData
     /// HEADER:
     ///   CountryCode (string UTF-8 length-prefixed)
     ///   SourceMapMtime (8B long)
+    ///   SourceMapHash (4B int length + bytes; v4 — SHA-256 of the v8 tile-index region, 32B; 0 = none)
     ///   CellSizeM (4B float)
     ///   JunctionToleranceM (4B float)
     ///   GraphCellSizeM (4B float)
@@ -43,6 +44,10 @@ namespace RailwayManager.GraphData
             // Header
             WriteString(bw, state.Header.CountryCode);
             bw.Write(state.Header.SourceMapMtime);
+            // v4: content fingerprint of the source v8 map (4B length + bytes). Freshness gate compares this.
+            var mapHash = state.Header.SourceMapHash;
+            bw.Write(mapHash?.Length ?? 0);
+            if (mapHash != null && mapHash.Length > 0) bw.Write(mapHash);
             bw.Write(state.Header.CellSizeM);
             bw.Write(state.Header.JunctionToleranceM);
             bw.Write(state.Header.GraphCellSizeM);

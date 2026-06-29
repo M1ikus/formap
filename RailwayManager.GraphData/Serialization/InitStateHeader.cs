@@ -18,8 +18,10 @@ namespace RailwayManager.GraphData
         /// <summary>Format version — bump on a breaking change. The loader checks compatibility.
         /// v2 (2026-05-11): GraphStationPlatform.Position field (platform centroid).
         /// v3 (2026-05-11): edge.metadata["railway:line_ref"] (railway line number from OSM
-        /// route relations, propagated by formap's CreateRailwayMesh).</summary>
-        public const int CurrentVersion = 3;
+        /// route relations, propagated by formap's CreateRailwayMesh).
+        /// v4 (2026-06-29): SourceMapHash field — freshness gate is now by v8 content hash, not mtime
+        /// (mtime changes when poland-v8.bin is copied to StreamingAssets, causing false "stale").</summary>
+        public const int CurrentVersion = 4;
 
         /// <summary>ISO 3166-1 alpha-2 (PL, DE, CZ, etc.) — identifies the country in the file.</summary>
         public string? CountryCode;
@@ -27,8 +29,14 @@ namespace RailwayManager.GraphData
         /// <summary>Format version — the loader rejects the file when != CurrentVersion (forces regeneration).</summary>
         public int Version;
 
-        /// <summary>Source map file mtime (Unix seconds) — invalidate the cache when poland-v7.bin is newer.</summary>
+        /// <summary>Source map file mtime — informational only since v4 (NOT a freshness gate; mtime changes
+        /// when the map is copied to StreamingAssets). Kept for debugging.</summary>
         public long SourceMapMtime;
+
+        /// <summary>v4: SHA-256 of the source v8 map's tile-index region (BinaryFormatV8.ComputeMapIndexHash) —
+        /// the content fingerprint the freshness gate compares. Stable across copy/deploy/regen; unaffected by
+        /// timestamps. null only for non-v8 source maps (then the gate falls back to magic/version/country).</summary>
+        public byte[]? SourceMapHash;
 
         /// <summary>Build params — checked against the runtime config.</summary>
         public float CellSizeM;
