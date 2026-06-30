@@ -56,6 +56,19 @@ public static class InitStateBuilder
         Console.WriteLine($"[InitStateBuilder]   filtered to {railwayMainline.Count} mainline (skip tram/sidings/etc.)");
         state.PathfindingGraph.BuildFromFeaturesUnionFind(railwayMainline, state.Header.GraphCellSizeM);
 
+        // v5: physical tracks (chains between switches) + per-edge TrackIndex. TrackKey is content-derived from
+        // each segment's (osm wayId, vertexIndex), so map segmentId → (wayId, vtx) from the source features.
+        var segMap = new Dictionary<int, (long wayId, int vtx)>();
+        foreach (var f in railwayMainline)
+        {
+            if (f?.SegmentIds == null) continue;
+            long wid = 0;
+            if (f.Metadata != null && f.Metadata.TryGetValue("osm:way_id", out var ws)) long.TryParse(ws, out wid);
+            for (int i = 0; i < f.SegmentIds.Count; i++) segMap[f.SegmentIds[i]] = (wid, i);
+        }
+        state.Tracks = GraphTrackBuilder.Build(state.PathfindingGraph, segMap);
+        Console.WriteLine($"[InitStateBuilder] Built {state.Tracks.Count} physical tracks (chains between switches).");
+
         Console.WriteLine($"[InitStateBuilder] Building Places ({layers[BinaryFormat.LayerType.Places].Count} features)...");
         state.Places = GraphPlaceBuilder.Build(layers[BinaryFormat.LayerType.Places], resolver);
 

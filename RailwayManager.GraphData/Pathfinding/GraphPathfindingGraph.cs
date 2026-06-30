@@ -333,6 +333,18 @@ namespace RailwayManager.GraphData
             return edgeId;
         }
 
+        /// <summary>v5: stamp the physical-track index on an edge (GraphEdge is a struct → copy back).</summary>
+        public void SetEdgeTrackIndex(int edgeId, int trackIndex)
+        {
+            var e = _edges[edgeId]; e.TrackIndex = trackIndex; _edges[edgeId] = e;
+        }
+
+        /// <summary>v5: stamp the station-extent id on an edge (-1 = open line).</summary>
+        public void SetEdgeStationId(int edgeId, int stationId)
+        {
+            var e = _edges[edgeId]; e.StationId = stationId; _edges[edgeId] = e;
+        }
+
         // ─────────────────────────────────────────────
         //  Spatial grid helpers
         // ─────────────────────────────────────────────
