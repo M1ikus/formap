@@ -1,4 +1,5 @@
 using OsmSharp;
+using RailwayManager.GraphData;
 
 namespace formap;
 
@@ -50,6 +51,27 @@ class Program
             return;
         }
 
+        // CI determinism self-check (v5): build the init-state from a v8 map TWICE and assert the content keys
+        // (TrackKey, station OsmNodeId, per-edge track/station mapping, platform entries) are byte-identical —
+        // i.e. baked timetables stay regen-stable. Exit 0 = deterministic, 1 = drift, 2 = error.
+        if (args.Length >= 3 && args[0] == "--v5-selfcheck") // <map.v8.bin> <country>
+        {
+            string v8 = args[1], country = args[2];
+            if (!File.Exists(v8)) { Console.WriteLine($"Error: {v8} not found."); Environment.Exit(2); }
+            string isPath = InitStateBuilder.GetInitStatePath(v8, country);
+            InitStateBuilder.BuildAndWrite(v8, country);
+            string a = V5Fingerprint(isPath);
+            InitStateBuilder.BuildAndWrite(v8, country);
+            string b = V5Fingerprint(isPath);
+            bool ok = a == b;
+            Console.WriteLine($"[V5-SELFCHECK] {v8}");
+            Console.WriteLine($"  build1 {a.Substring(0, 16)}…   build2 {b.Substring(0, 16)}…");
+            Console.WriteLine(ok
+                ? "[V5-SELFCHECK] PASS — v5 content keys deterministic across builds (timetables regen-stable)"
+                : "[V5-SELFCHECK] FAIL — non-deterministic content keys");
+            Environment.Exit(ok ? 0 : 1);
+        }
+
         // Assert that an init-state file is valid for a given v8 map (the freshness gate the game uses):
         // matches by v8 tile-index content hash, NOT mtime. Exit 0 = VALID (game fast-paths), 1 = STALE/mismatch
         // (game would rebuild the graph), 2 = error. Use in deploy/CI to catch a mispaired init-state before shipping.
@@ -94,6 +116,7 @@ class Program
             Console.WriteLine("  --verify-sig <file> <pubkey>  Verify a signed v8 file's signature + per-block hashes, then exit");
             Console.WriteLine("  --sign-existing <file> <priv> Ed25519-sign an existing v8 file in place (no re-build), then exit");
             Console.WriteLine("  --check-initstate <init-state> <map.v8> <country>  Assert init-state matches the v8 map (content hash, not mtime); exit 0=valid, 1=stale");
+            Console.WriteLine("  --v5-selfcheck <map.v8> <country>                  Build init-state twice; assert v5 content keys are deterministic; exit 0=ok, 1=drift");
             return;
         }
 
@@ -216,5 +239,39 @@ class Program
                 Environment.Exit(2);
             }
         }
+    }
+
+    // v5 determinism fingerprint: hashes the content keys that baked timetables depend on — sorted TrackKeys,
+    // sorted station OsmNodeIds, per-edge (TrackKey, StationOsmId, SegmentId), and platform (TrackKey, FromM, ToM).
+    static string V5Fingerprint(string initStatePath)
+    {
+        var st = InitStateReader.Read(initStatePath);
+        var g = st.PathfindingGraph;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder();
+        var tks = new List<long>(); foreach (var t in st.Tracks) tks.Add(t.TrackKey); tks.Sort();
+        foreach (var k in tks) sb.Append(k).Append(',');
+        sb.Append('#');
+        var oids = new List<long>(); foreach (var s in st.Stations) oids.Add(s.OsmNodeId); oids.Sort();
+        foreach (var o in oids) sb.Append(o).Append(',');
+        sb.Append('#');
+        foreach (var e in g.Edges)
+        {
+            long tk = e.TrackIndex >= 0 && e.TrackIndex < st.Tracks.Count ? st.Tracks[e.TrackIndex].TrackKey : 0;
+            long so = e.StationId >= 0 && e.StationId < st.Stations.Count ? st.Stations[e.StationId].OsmNodeId : -1;
+            sb.Append(tk).Append(':').Append(so).Append(':').Append(e.SegmentId).Append('|');
+        }
+        sb.Append('#');
+        foreach (var p in st.Platforms)
+        {
+            foreach (var en in p.Entries)
+            {
+                long tk = en.TrackIndex >= 0 && en.TrackIndex < st.Tracks.Count ? st.Tracks[en.TrackIndex].TrackKey : 0;
+                sb.Append(tk).Append(',').Append(en.FromM.ToString("F2", ci)).Append(',').Append(en.ToM.ToString("F2", ci)).Append(';');
+            }
+            sb.Append('/');
+        }
+        var h = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
+        return Convert.ToHexString(h);
     }
 }
