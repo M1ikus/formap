@@ -54,9 +54,13 @@ namespace RailwayManager.GraphData
                 int nodeId = pathGraph.FindNearestNode(pos, maxSnapRadiusM);
                 if (nodeId < 0) unmatched++;
 
+                long osmId = 0; // v5: stable save-game key (propagated by formap as osm:node_id)
+                if (feature.Metadata.TryGetValue("osm:node_id", out var nidStr)) long.TryParse(nidStr, out osmId);
+
                 var station = new GraphRailwayStation
                 {
-                    StationId = nextId++,
+                    StationId = nextId++, // provisional — reindexed deterministically (by OsmNodeId) in InitStateBuilder
+                    OsmNodeId = osmId,
                     Name = name ?? "(no name)",
                     Position = pos,
                     IsMajorStation = isMajor,

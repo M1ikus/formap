@@ -74,6 +74,18 @@ public static class InitStateBuilder
 
         Console.WriteLine($"[InitStateBuilder] Building Stations + Platforms + Signals...");
         state.Stations = GraphStationBuilder.Build(layers[BinaryFormat.LayerType.POIs], state.PathfindingGraph, 200f, resolver);
+        // v5: deterministic station ids — order by stable OsmNodeId, then StationId = array index (== edge.StationId).
+        state.Stations.Sort((a, b) =>
+        {
+            int c = a.OsmNodeId.CompareTo(b.OsmNodeId);
+            if (c != 0) return c;
+            c = a.Position.X.CompareTo(b.Position.X);
+            if (c != 0) return c;
+            return a.Position.Y.CompareTo(b.Position.Y);
+        });
+        for (int i = 0; i < state.Stations.Count; i++) state.Stations[i].StationId = i;
+        // v5: stamp edge.StationId by adaptive graph-extent BFS from each station.
+        GraphStationExtentBuilder.Assign(state.PathfindingGraph, state.Stations, 1500f);
         state.Platforms = GraphPlatformBuilder.Build(layers[BinaryFormat.LayerType.Platforms], state.PathfindingGraph);
         state.Signals = GraphSignalsBuilder.Build(layers[BinaryFormat.LayerType.POIs], state.PathfindingGraph);
 
