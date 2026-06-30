@@ -19,6 +19,8 @@ namespace RailwayManager.GraphData
         public float LengthM;
         public int MaxSpeedKmh;
         public bool IsOsmForward;
+        public int TrackIndex; // v5: index into InitState.Tracks (the physical track this edge lies on); -1 = none
+        public int StationId;  // v5: index into InitState.Stations (station whose extent this edge is in); -1 = open line
         public Dictionary<string, string>? Metadata; // shared reference, not allocated per Edge
         public List<GraphPoint>? Geometry; // nullable, always null in the MVP
     }

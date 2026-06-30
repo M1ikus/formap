@@ -59,10 +59,12 @@ namespace RailwayManager.GraphData
             bw.Write(state.Places.Count);
             bw.Write(state.Signals.Count);
             bw.Write(state.BlockSections.Sections != null ? state.BlockSections.Sections.Count : 0);
+            bw.Write(state.Tracks != null ? state.Tracks.Count : 0); // v5
             bw.Write(0); // CrossCountryLinkCount (MVP)
 
             WriteAdminRegions(bw, state.AdminRegions);
             WritePathfindingGraph(bw, state.PathfindingGraph);
+            WriteTracks(bw, state.Tracks); // v5 — right after the graph (references its node/edge ids)
             WritePlaces(bw, state.Places);
             WriteStations(bw, state.Stations);
             WritePlatforms(bw, state.Platforms);
@@ -139,6 +141,8 @@ namespace RailwayManager.GraphData
                 bw.Write(e.LengthM);
                 bw.Write(e.MaxSpeedKmh);
                 bw.Write(e.IsOsmForward);
+                bw.Write(e.TrackIndex); // v5
+                bw.Write(e.StationId);  // v5
                 // Metadata: we write "railway:track_ref" (used by BlockSection) + "railway:line_ref"
                 // (v3 2026-05-11: railway line number from OSM route relations, propagated by formap).
                 if (e.Metadata != null && e.Metadata.TryGetValue("railway:track_ref", out var tr))
@@ -175,6 +179,7 @@ namespace RailwayManager.GraphData
             foreach (var s in stations)
             {
                 bw.Write(s.StationId);
+                bw.Write(s.OsmNodeId); // v5
                 WriteString(bw, s.Name);
                 bw.Write(s.Position.X);
                 bw.Write(s.Position.Y);
@@ -198,6 +203,32 @@ namespace RailwayManager.GraphData
                 WriteString(bw, p.PlatformName);
                 WriteString(bw, p.TrackRef);
                 bw.Write(p.LengthM);
+                // v5: (trackIndex, fromM, toM) entries — island platform = 2, no track = 0
+                var entries = p.Entries ?? new List<GraphPlatformEntry>();
+                bw.Write(entries.Count);
+                foreach (var en in entries)
+                {
+                    bw.Write(en.TrackIndex);
+                    bw.Write(en.FromM);
+                    bw.Write(en.ToM);
+                }
+            }
+        }
+
+        private static void WriteTracks(BinaryWriter bw, List<GraphTrack>? tracks)
+        {
+            int count = tracks != null ? tracks.Count : 0;
+            bw.Write(count);
+            if (tracks == null) return;
+            foreach (var t in tracks)
+            {
+                bw.Write(t.TrackKey);
+                bw.Write(t.StartNodeId);
+                bw.Write(t.EndNodeId);
+                bw.Write(t.LengthM);
+                var edges = t.EdgeIds ?? new List<int>();
+                bw.Write(edges.Count);
+                foreach (var eid in edges) bw.Write(eid);
             }
         }
 

@@ -14,6 +14,7 @@ namespace RailwayManager.GraphData
         public InitStateHeader Header = new InitStateHeader();
         public List<GraphAdminRegion> AdminRegions = new List<GraphAdminRegion>();
         public GraphPathfindingGraph PathfindingGraph = new GraphPathfindingGraph();
+        public List<GraphTrack> Tracks = new List<GraphTrack>(); // v5: physical tracks (chains between switches)
         public List<GraphCityPlace> Places = new List<GraphCityPlace>();
         public List<GraphRailwayStation> Stations = new List<GraphRailwayStation>();
         public List<GraphStationPlatform> Platforms = new List<GraphStationPlatform>();

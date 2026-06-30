@@ -20,8 +20,10 @@ namespace RailwayManager.GraphData
         /// v3 (2026-05-11): edge.metadata["railway:line_ref"] (railway line number from OSM
         /// route relations, propagated by formap's CreateRailwayMesh).
         /// v4 (2026-06-29): SourceMapHash field — freshness gate is now by v8 content hash, not mtime
-        /// (mtime changes when poland-v8.bin is copied to StreamingAssets, causing false "stale").</summary>
-        public const int CurrentVersion = 4;
+        /// (mtime changes when poland-v8.bin is copied to StreamingAssets, causing false "stale").
+        /// v5 (2026-06-30): track data model (TD-055/056) — §Tracks section, edge TrackIndex+StationId,
+        /// station OsmNodeId, platform (TrackIndex,FromM,ToM) entries.</summary>
+        public const int CurrentVersion = 5;
 
         /// <summary>ISO 3166-1 alpha-2 (PL, DE, CZ, etc.) — identifies the country in the file.</summary>
         public string? CountryCode;
@@ -52,6 +54,7 @@ namespace RailwayManager.GraphData
         public int PlaceCount;
         public int SignalCount;
         public int BlockSectionCount;
+        public int TrackCount;            // v5: physical tracks (chains between switches)
         public int CrossCountryLinkCount; // DLC border crossings, MVP=0
     }
 }

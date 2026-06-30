@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace RailwayManager.GraphData
 {
     /// <summary>
@@ -11,5 +13,15 @@ namespace RailwayManager.GraphData
         public string? PlatformName;   // ref tag from OSM
         public string? TrackRef;       // railway:track_ref
         public float LengthM;
+        public List<GraphPlatformEntry> Entries = new(); // v5: (trackIndex, fromM, toM); island platform = 2; none = 0
+    }
+
+    /// <summary>v5: one platform-to-track binding — the platform's extent projected onto a track centerline,
+    /// in that track's 0→LengthM kilometrage. Island platform = 2 entries (the two adjacent tracks).</summary>
+    public struct GraphPlatformEntry
+    {
+        public int TrackIndex; // index into InitState.Tracks
+        public float FromM;
+        public float ToM;
     }
 }

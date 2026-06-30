@@ -45,10 +45,12 @@ namespace RailwayManager.GraphData
             state.Header.PlaceCount = br.ReadInt32();
             state.Header.SignalCount = br.ReadInt32();
             state.Header.BlockSectionCount = br.ReadInt32();
+            state.Header.TrackCount = br.ReadInt32(); // v5
             state.Header.CrossCountryLinkCount = br.ReadInt32();
 
             state.AdminRegions = ReadAdminRegions(br);
             state.PathfindingGraph = ReadPathfindingGraph(br);
+            state.Tracks = ReadTracks(br); // v5
             state.Places = ReadPlaces(br);
             state.Stations = ReadStations(br);
             state.Platforms = ReadPlatforms(br);
@@ -160,7 +162,9 @@ namespace RailwayManager.GraphData
                     SegmentId = br.ReadInt32(),
                     LengthM = br.ReadSingle(),
                     MaxSpeedKmh = br.ReadInt32(),
-                    IsOsmForward = br.ReadBoolean()
+                    IsOsmForward = br.ReadBoolean(),
+                    TrackIndex = br.ReadInt32(), // v5
+                    StationId = br.ReadInt32()   // v5
                 };
                 string? trackRef = ReadString(br);
                 // v3 (2026-05-11): railway:line_ref (railway line number from OSM route relations).
@@ -181,6 +185,27 @@ namespace RailwayManager.GraphData
             var graph = new GraphPathfindingGraph();
             graph.LoadFromSerializedData(nodes, edges, junctions, cellSize);
             return graph;
+        }
+
+        private static List<GraphTrack> ReadTracks(BinaryReader br)
+        {
+            int n = br.ReadInt32();
+            var list = new List<GraphTrack>(n);
+            for (int i = 0; i < n; i++)
+            {
+                var t = new GraphTrack
+                {
+                    TrackKey = br.ReadInt64(),
+                    StartNodeId = br.ReadInt32(),
+                    EndNodeId = br.ReadInt32(),
+                    LengthM = br.ReadSingle()
+                };
+                int ec = br.ReadInt32();
+                t.EdgeIds = new List<int>(ec);
+                for (int k = 0; k < ec; k++) t.EdgeIds.Add(br.ReadInt32());
+                list.Add(t);
+            }
+            return list;
         }
 
         private static List<GraphCityPlace> ReadPlaces(BinaryReader br)
@@ -210,6 +235,7 @@ namespace RailwayManager.GraphData
                 list.Add(new GraphRailwayStation
                 {
                     StationId = br.ReadInt32(),
+                    OsmNodeId = br.ReadInt64(), // v5
                     Name = ReadString(br),
                     Position = new GraphPoint(br.ReadSingle(), br.ReadSingle()),
                     IsMajorStation = br.ReadBoolean(),
@@ -227,7 +253,7 @@ namespace RailwayManager.GraphData
             var list = new List<GraphStationPlatform>(n);
             for (int i = 0; i < n; i++)
             {
-                list.Add(new GraphStationPlatform
+                var pf = new GraphStationPlatform
                 {
                     PlatformId = br.ReadInt32(),
                     StationNodeId = br.ReadInt32(),
@@ -236,7 +262,11 @@ namespace RailwayManager.GraphData
                     PlatformName = ReadString(br),
                     TrackRef = ReadString(br),
                     LengthM = br.ReadSingle()
-                });
+                };
+                int entryCount = br.ReadInt32(); // v5
+                for (int e = 0; e < entryCount; e++)
+                    pf.Entries.Add(new GraphPlatformEntry { TrackIndex = br.ReadInt32(), FromM = br.ReadSingle(), ToM = br.ReadSingle() });
+                list.Add(pf);
             }
             return list;
         }

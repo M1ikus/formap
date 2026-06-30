@@ -325,7 +325,9 @@ namespace RailwayManager.GraphData
                 MaxSpeedKmh = maxSpeed,
                 Metadata = metadata,
                 Geometry = null, // MVP: skip geometry
-                IsOsmForward = isOsmForward
+                IsOsmForward = isOsmForward,
+                TrackIndex = -1, // v5: set by GraphTrackBuilder; -1 until then / for non-track edges
+                StationId = -1   // v5: set by the station-extent pass; -1 = open line
             });
             _nodes[from].EdgeIds.Add(edgeId);
             return edgeId;

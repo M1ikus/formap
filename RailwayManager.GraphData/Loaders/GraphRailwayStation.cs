@@ -5,7 +5,8 @@ namespace RailwayManager.GraphData
     /// </summary>
     public class GraphRailwayStation
     {
-        public int StationId;
+        public int StationId;              // == position in InitState.Stations (== edge.StationId); sorted by OsmNodeId
+        public long OsmNodeId;             // v5: source OSM railway=station/halt node id — stable save-game key
         public string? Name;
         public GraphPoint Position;
         public bool IsMajorStation;        // true = railway=station, false = railway=halt
