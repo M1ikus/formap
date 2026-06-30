@@ -466,6 +466,28 @@ public class OsmConverter
             
             LogProgress("RAILWAYS", bufferedRailways.Count, bufferedRailways.Count);
             bufferedRailways.Clear();
+
+            // v5: deterministic, unique segment ids. Previously each per-segment id came from a shared
+            // nextRailSegmentId++ INSIDE the parallel loop — a data race → non-deterministic AND possibly
+            // non-unique ids (which leaked into signal-block keys). Order railways canonically by source way id
+            // (stable across regens), then number every segment sequentially in one single-threaded pass.
+            railways.Sort((a, b) =>
+            {
+                int c = a.SourceWayId.CompareTo(b.SourceWayId);
+                if (c != 0) return c;
+                if (a.Vertices.Count > 0 && b.Vertices.Count > 0)
+                {
+                    c = a.Vertices[0].X.CompareTo(b.Vertices[0].X);
+                    if (c != 0) return c;
+                    c = a.Vertices[0].Y.CompareTo(b.Vertices[0].Y);
+                }
+                return c;
+            });
+            int segId = 1;
+            foreach (var g in railways)
+                for (int k = 0; k < g.SegmentIds.Count; k++)
+                    g.SegmentIds[k] = segId++;
+            nextRailSegmentId = segId;
         }
         
         // Process multipolygons after all ways are cached (parallel processing with better load balancing)
@@ -1480,7 +1502,12 @@ public class OsmConverter
         {
             var poi = CreatePointMesh(node.Latitude.Value, node.Longitude.Value, tags);
             if (poi != null)
+            {
+                // v5: carry the source OSM node id so stations get a stable OsmNodeId key (save-game stable).
+                if (node.Id.HasValue)
+                    poi.Metadata["osm:node_id"] = node.Id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 pois.Add(poi);
+            }
             return;
         }
 
@@ -1884,7 +1911,7 @@ public class OsmConverter
         {
             geom.Indices.Add(i);
             geom.Indices.Add(i + 1);
-            segmentIds.Add(nextRailSegmentId++);
+            segmentIds.Add(0); // placeholder — real id assigned deterministically after the parallel pass
         }
         
         // Validate indices (should always be valid for railways, but check anyway)
@@ -1924,6 +1951,10 @@ public class OsmConverter
             });
             geom.Metadata["railway:line_ref"] = string.Join(";", sortedRefs);
         }
+        // Carry the source OSM way id (v5: deterministic segment ids + trackId/kilometrage keys).
+        geom.SourceWayId = way.Id ?? 0;
+        if (way.Id.HasValue)
+            geom.Metadata["osm:way_id"] = way.Id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         // store segment ids and junction indices in binary (MeshGeometry)
         geom.SegmentIds = segmentIds;
         if (junctionIndices.Count > 0)

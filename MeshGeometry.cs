@@ -17,6 +17,10 @@ public class MeshGeometry
     public List<int> SegmentIds { get; set; } = new();
     public List<int> JunctionIndices { get; set; } = new();
     public Dictionary<string, string> Metadata { get; set; } = new();
+
+    /// <summary>Source OSM way id (transient, conversion-only; not serialized). Used to assign deterministic
+    /// segment ids and to key v5 track ids. The serialized form is Metadata["osm:way_id"].</summary>
+    public long SourceWayId { get; set; }
     
     /// <summary>
     /// Computes bounding box from vertices
