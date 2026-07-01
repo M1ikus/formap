@@ -84,9 +84,10 @@ public static class InitStateBuilder
             return a.Position.Y.CompareTo(b.Position.Y);
         });
         for (int i = 0; i < state.Stations.Count; i++) state.Stations[i].StationId = i;
-        // v5: stamp edge.StationId by adaptive graph-extent BFS from each station.
-        GraphStationExtentBuilder.Assign(state.PathfindingGraph, state.Stations, 1500f);
         state.Platforms = GraphPlatformBuilder.Build(layers[BinaryFormat.LayerType.Platforms], state.PathfindingGraph, state.Tracks);
+        // v5: stamp edge.StationId — needs platforms (the station's line-set = its platforms' track line_refs,
+        // which bars the extent from spilling across a switch onto a parallel line). After stations + platforms.
+        GraphStationExtentBuilder.Assign(state.PathfindingGraph, state.Stations, state.Platforms, state.Tracks, 1500f);
         state.Signals = GraphSignalsBuilder.Build(layers[BinaryFormat.LayerType.POIs], state.PathfindingGraph);
 
         Console.WriteLine($"[InitStateBuilder] Building BlockSections...");
